@@ -1,0 +1,11 @@
+node_modules/
+.turbo/
+dist/
+coverage/
+apps/api/src/generated/
+supabase/.temp/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log

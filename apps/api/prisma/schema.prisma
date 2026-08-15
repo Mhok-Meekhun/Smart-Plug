@@ -1,0 +1,140 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AppLocale {
+  TH @map("th")
+  EN @map("en")
+
+  @@map("app_locale")
+}
+
+enum HomeMemberRole {
+  OWNER
+  MEMBER
+
+  @@map("home_member_role")
+}
+
+enum DeviceLifecycleStatus {
+  UNPAIRED
+  ACTIVE
+  DISABLED
+  REVOKED
+
+  @@map("device_lifecycle_status")
+}
+
+enum DeviceConnectionStatus {
+  ONLINE
+  OFFLINE
+  CONNECTING
+  ERROR
+
+  @@map("device_connection_status")
+}
+
+model Profile {
+  id           String       @id @db.Uuid
+  displayName  String?      @map("display_name") @db.VarChar(120)
+  locale       AppLocale    @default(TH)
+  timezone     String       @default("Asia/Bangkok") @db.VarChar(80)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdHomes Home[]       @relation("HomeCreator")
+  memberships  HomeMember[]
+
+  @@map("profiles")
+}
+
+model Home {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String       @db.VarChar(120)
+  timezone  String       @default("Asia/Bangkok") @db.VarChar(80)
+  currency  String       @default("THB") @db.Char(3)
+  createdBy String       @map("created_by") @db.Uuid
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  creator   Profile      @relation("HomeCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  members   HomeMember[]
+  rooms     Room[]
+  devices   Device[]
+
+  @@index([createdBy])
+  @@map("homes")
+}
+
+model HomeMember {
+  homeId    String         @map("home_id") @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  role      HomeMemberRole @default(MEMBER)
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  home      Home           @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  user      Profile        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([homeId, userId])
+  @@index([userId, homeId])
+  @@map("home_members")
+}
+
+model Room {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  homeId    String   @map("home_id") @db.Uuid
+  name      String   @db.VarChar(120)
+  icon      String?  @db.VarChar(60)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  home      Home     @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  devices   Device[]
+
+  @@unique([homeId, name])
+  @@index([homeId, sortOrder])
+  @@map("rooms")
+}
+
+model Device {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hardwareId      String                @unique @map("hardware_id") @db.VarChar(120)
+  homeId          String                @map("home_id") @db.Uuid
+  roomId          String?               @map("room_id") @db.Uuid
+  name            String                @db.VarChar(120)
+  type            String                @default("SMART_PLUG") @db.VarChar(40)
+  icon            String?               @db.VarChar(60)
+  firmwareVersion String?               @map("firmware_version") @db.VarChar(40)
+  ratedCurrentA   Decimal               @default(16) @map("rated_current_a") @db.Decimal(6, 2)
+  lifecycleStatus DeviceLifecycleStatus @default(UNPAIRED) @map("lifecycle_status")
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  home            Home                  @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  room            Room?                 @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  state           DeviceState?
+
+  @@index([homeId, roomId])
+  @@index([homeId, lifecycleStatus])
+  @@map("devices")
+}
+
+model DeviceState {
+  deviceId        String                 @id @map("device_id") @db.Uuid
+  connectionStatus DeviceConnectionStatus @default(OFFLINE) @map("connection_status")
+  relayState      Boolean                @default(false) @map("relay_state")
+  voltageV        Decimal?               @map("voltage_v") @db.Decimal(7, 2)
+  currentA        Decimal?               @map("current_a") @db.Decimal(9, 3)
+  powerW          Decimal?               @map("power_w") @db.Decimal(10, 2)
+  energyKwh       Decimal?               @map("energy_kwh") @db.Decimal(14, 6)
+  sequence        BigInt?
+  lastSeenAt      DateTime?              @map("last_seen_at") @db.Timestamptz(3)
+  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  device          Device                 @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([connectionStatus, lastSeenAt])
+  @@map("device_states")
+}
