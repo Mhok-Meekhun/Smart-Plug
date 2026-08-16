@@ -7,7 +7,7 @@ services:
     autoDeployTrigger: checksPass
     buildCommand: corepack enable && corepack prepare pnpm@10.15.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @smart-home/web build
     startCommand: pnpm --filter @smart-home/web start
-    healthCheckPath: /th/dashboard
+    healthCheckPath: /th/auth/login
     envVars:
       - key: NODE_VERSION
         value: 24.18.0
