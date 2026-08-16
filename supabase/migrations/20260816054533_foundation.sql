@@ -1,3 +1,4 @@
+-- Initial tenant, device, and realtime authorization foundation.
 create extension if not exists pgcrypto with schema extensions;
 
 create type public.app_locale as enum ('th', 'en');
@@ -122,6 +123,8 @@ create trigger device_states_set_updated_at
 before update on public.device_states
 for each row execute function public.set_updated_at();
 
+revoke all on function public.set_updated_at() from public;
+
 create function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -139,6 +142,8 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_user();
 
+revoke all on function public.handle_new_user() from public;
+
 create function public.handle_new_home()
 returns trigger
 language plpgsql
@@ -155,6 +160,8 @@ $$;
 create trigger on_home_created
 after insert on public.homes
 for each row execute function public.handle_new_home();
+
+revoke all on function public.handle_new_home() from public;
 
 create function public.is_home_member(target_home_id uuid, target_user_id uuid default auth.uid())
 returns boolean

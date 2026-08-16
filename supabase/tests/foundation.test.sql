@@ -35,10 +35,10 @@ select ok(
   'device membership read policy exists'
 );
 select has_function(
-  'public',
+  'private',
   'handle_new_home',
   array[]::text[],
-  'new homes automatically receive an owner membership'
+  'private trigger function creates owner membership for new homes'
 );
 select ok(
   exists(
