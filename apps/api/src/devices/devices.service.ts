@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import type { DeviceConnectionStatus } from "../generated/prisma/enums.js";
 import { PrismaService } from "../database/prisma.service.js";
 
@@ -59,6 +59,80 @@ export class DevicesService {
           }
         : null
     }));
+  }
+
+  async requestRelayState(
+    userId: string,
+    deviceId: string,
+    desiredRelayState: boolean,
+    idempotencyKey: string
+  ) {
+    const device = await this.prisma.device.findFirst({
+      where: {
+        id: deviceId,
+        home: { members: { some: { userId } } }
+      },
+      select: { id: true }
+    });
+    if (!device) {
+      throw new NotFoundException({
+        code: "DEVICE_NOT_FOUND",
+        messageKey: "errors.deviceNotFound"
+      });
+    }
+
+    const existing = await this.prisma.deviceCommand.findUnique({
+      where: { deviceId_idempotencyKey: { deviceId, idempotencyKey } }
+    });
+    if (existing) {
+      if (existing.desiredRelayState !== desiredRelayState) {
+        throw new ConflictException({
+          code: "IDEMPOTENCY_KEY_REUSED",
+          messageKey: "errors.idempotencyKeyReused"
+        });
+      }
+      return this.commandResponse(existing);
+    }
+
+    const requestedAt = new Date();
+    const expiresAt = new Date(requestedAt.getTime() + 30_000);
+    const command = await this.prisma.$transaction(async (transaction) => {
+      const created = await transaction.deviceCommand.create({
+        data: {
+          deviceId,
+          requestedBy: userId,
+          desiredRelayState,
+          idempotencyKey,
+          requestedAt,
+          expiresAt
+        }
+      });
+      await transaction.deviceCommandOutbox.create({
+        data: { commandId: created.id }
+      });
+      return created;
+    });
+
+    return this.commandResponse(command);
+  }
+
+  private commandResponse(command: {
+    id: string;
+    deviceId: string;
+    desiredRelayState: boolean;
+    status: string;
+    requestedAt: Date;
+    expiresAt: Date;
+  }) {
+    return {
+      commandId: command.id,
+      deviceId: command.deviceId,
+      desiredRelayState: command.desiredRelayState,
+      status: command.status,
+      requestedAt: command.requestedAt,
+      expiresAt: command.expiresAt,
+      confirmed: command.status === "ACKNOWLEDGED"
+    };
   }
 
   private decimalToNumber(value: { toNumber(): number } | null): number | null {

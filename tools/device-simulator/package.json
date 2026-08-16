@@ -8,13 +8,18 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist coverage",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@smart-home/contracts": "workspace:*"
+    "@smart-home/contracts": "workspace:*",
+    "mqtt": "^5.15.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }

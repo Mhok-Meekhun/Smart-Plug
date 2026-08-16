@@ -41,6 +41,41 @@ enum DeviceConnectionStatus {
   @@map("device_connection_status")
 }
 
+enum EnergyBucketSize {
+  MINUTE
+  HOUR
+  DAY
+
+  @@map("energy_bucket_size")
+}
+
+enum DeviceCommandStatus {
+  PENDING
+  SENT
+  ACKNOWLEDGED
+  FAILED
+  TIMED_OUT
+  CANCELLED
+
+  @@map("device_command_status")
+}
+
+enum ScheduleKind {
+  ONCE
+  REPEATING
+
+  @@map("schedule_kind")
+}
+
+enum ScheduleExecutionStatus {
+  PENDING
+  COMMAND_CREATED
+  FAILED
+  SKIPPED
+
+  @@map("schedule_execution_status")
+}
+
 model Profile {
   id           String       @id @db.Uuid
   displayName  String?      @map("display_name") @db.VarChar(120)
@@ -50,6 +85,8 @@ model Profile {
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
   createdHomes Home[]       @relation("HomeCreator")
   memberships  HomeMember[]
+  commands     DeviceCommand[]
+  schedules    DeviceSchedule[]
 
   @@map("profiles")
 }
@@ -66,6 +103,7 @@ model Home {
   members   HomeMember[]
   rooms     Room[]
   devices   Device[]
+  tariffs   ElectricityTariff[]
 
   @@index([createdBy])
   @@map("homes")
@@ -116,6 +154,10 @@ model Device {
   home            Home                  @relation(fields: [homeId], references: [id], onDelete: Cascade)
   room            Room?                 @relation(fields: [roomId], references: [id], onDelete: SetNull)
   state           DeviceState?
+  telemetry       TelemetryReading[]
+  aggregates      EnergyAggregate[]
+  commands        DeviceCommand[]
+  schedules       DeviceSchedule[]
 
   @@index([homeId, roomId])
   @@index([homeId, lifecycleStatus])
@@ -137,4 +179,145 @@ model DeviceState {
 
   @@index([connectionStatus, lastSeenAt])
   @@map("device_states")
+}
+
+model TelemetryReading {
+  id                BigInt   @default(autoincrement())
+  messageId         String   @map("message_id") @db.VarChar(80)
+  deviceId          String   @map("device_id") @db.Uuid
+  sequence          BigInt
+  deviceTimestamp   DateTime @map("device_timestamp") @db.Timestamptz(3)
+  serverReceivedAt  DateTime @default(now()) @map("server_received_at") @db.Timestamptz(3)
+  voltageV          Decimal  @map("voltage_v") @db.Decimal(7, 2)
+  currentA          Decimal  @map("current_a") @db.Decimal(9, 3)
+  powerW            Decimal  @map("power_w") @db.Decimal(10, 2)
+  energyKwh         Decimal  @map("energy_kwh") @db.Decimal(14, 6)
+  frequencyHz       Decimal? @map("frequency_hz") @db.Decimal(6, 2)
+  powerFactor       Decimal? @map("power_factor") @db.Decimal(5, 4)
+  signalStrengthDbm Int?     @map("signal_strength_dbm") @db.SmallInt
+  device            Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@id([id, serverReceivedAt])
+  @@unique([deviceId, messageId])
+  @@index([deviceId, serverReceivedAt(sort: Desc)])
+  @@map("telemetry_readings")
+}
+
+model EnergyAggregate {
+  deviceId       String           @map("device_id") @db.Uuid
+  bucketSize     EnergyBucketSize @map("bucket_size")
+  bucketStart    DateTime         @map("bucket_start") @db.Timestamptz(3)
+  sampleCount    Int              @map("sample_count")
+  energyKwh      Decimal          @map("energy_kwh") @db.Decimal(14, 6)
+  averagePowerW  Decimal          @map("average_power_w") @db.Decimal(10, 2)
+  peakPowerW     Decimal          @map("peak_power_w") @db.Decimal(10, 2)
+  minimumVoltageV Decimal?        @map("minimum_voltage_v") @db.Decimal(7, 2)
+  maximumVoltageV Decimal?        @map("maximum_voltage_v") @db.Decimal(7, 2)
+  calculatedAt   DateTime         @default(now()) @map("calculated_at") @db.Timestamptz(3)
+  device         Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@id([deviceId, bucketSize, bucketStart])
+  @@index([bucketSize, bucketStart(sort: Desc), deviceId])
+  @@map("energy_aggregates")
+}
+
+model DeviceCommand {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deviceId              String              @map("device_id") @db.Uuid
+  requestedBy           String              @map("requested_by") @db.Uuid
+  desiredRelayState     Boolean             @map("desired_relay_state")
+  status                DeviceCommandStatus @default(PENDING)
+  idempotencyKey        String              @map("idempotency_key") @db.VarChar(120)
+  requestedAt           DateTime            @default(now()) @map("requested_at") @db.Timestamptz(3)
+  sentAt                DateTime?           @map("sent_at") @db.Timestamptz(3)
+  acknowledgedAt        DateTime?           @map("acknowledged_at") @db.Timestamptz(3)
+  expiresAt             DateTime            @map("expires_at") @db.Timestamptz(3)
+  attemptCount          Int                 @default(0) @map("attempt_count") @db.SmallInt
+  failureCode           String?             @map("failure_code") @db.VarChar(80)
+  failureMessage        String?             @map("failure_message") @db.VarChar(300)
+  acknowledgementPayload Json?              @map("acknowledgement_payload")
+  updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  device                Device              @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  requester             Profile             @relation(fields: [requestedBy], references: [id], onDelete: Restrict)
+  outbox                DeviceCommandOutbox?
+  executions            ScheduleExecution[]
+
+  @@unique([deviceId, idempotencyKey])
+  @@index([deviceId, requestedAt(sort: Desc)])
+  @@index([requestedBy])
+  @@map("device_commands")
+}
+
+model DeviceCommandOutbox {
+  commandId   String         @id @map("command_id") @db.Uuid
+  availableAt DateTime       @default(now()) @map("available_at") @db.Timestamptz(3)
+  lockedAt    DateTime?      @map("locked_at") @db.Timestamptz(3)
+  lockedBy    String?        @map("locked_by") @db.VarChar(120)
+  publishedAt DateTime?      @map("published_at") @db.Timestamptz(3)
+  lastError   String?        @map("last_error") @db.VarChar(300)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  command     DeviceCommand  @relation(fields: [commandId], references: [id], onDelete: Cascade)
+
+  @@index([availableAt])
+  @@map("device_command_outbox")
+}
+
+model DeviceSchedule {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deviceId          String       @map("device_id") @db.Uuid
+  createdBy         String       @map("created_by") @db.Uuid
+  name              String       @db.VarChar(120)
+  kind              ScheduleKind
+  desiredRelayState Boolean      @map("desired_relay_state")
+  timezone          String       @default("Asia/Bangkok") @db.VarChar(80)
+  executeAt         DateTime?    @map("execute_at") @db.Timestamptz(3)
+  localTime         DateTime?    @map("local_time") @db.Time(0)
+  weekdays          Int[]
+  enabled           Boolean      @default(true)
+  nextRunAt         DateTime?    @map("next_run_at") @db.Timestamptz(3)
+  lastRunAt         DateTime?    @map("last_run_at") @db.Timestamptz(3)
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  device            Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  creator           Profile      @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  executions        ScheduleExecution[]
+
+  @@index([deviceId, createdAt(sort: Desc)])
+  @@index([createdBy])
+  @@map("device_schedules")
+}
+
+model ScheduleExecution {
+  id             String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scheduleId     String                  @map("schedule_id") @db.Uuid
+  scheduledFor   DateTime                @map("scheduled_for") @db.Timestamptz(3)
+  status         ScheduleExecutionStatus @default(PENDING)
+  commandId      String?                 @map("command_id") @db.Uuid
+  failureMessage String?                 @map("failure_message") @db.VarChar(300)
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  completedAt    DateTime?               @map("completed_at") @db.Timestamptz(3)
+  schedule       DeviceSchedule          @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  command        DeviceCommand?          @relation(fields: [commandId], references: [id], onDelete: SetNull)
+
+  @@unique([scheduleId, scheduledFor])
+  @@index([scheduleId, scheduledFor(sort: Desc)])
+  @@index([commandId])
+  @@map("schedule_executions")
+}
+
+model ElectricityTariff {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  homeId         String   @map("home_id") @db.Uuid
+  name           String   @db.VarChar(120)
+  currency       String   @default("THB") @db.Char(3)
+  flatRatePerKwh Decimal  @map("flat_rate_per_kwh") @db.Decimal(12, 4)
+  effectiveFrom  DateTime @map("effective_from") @db.Date
+  effectiveTo    DateTime? @map("effective_to") @db.Date
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  home           Home     @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@unique([homeId, effectiveFrom])
+  @@index([homeId, effectiveFrom(sort: Desc)])
+  @@map("electricity_tariffs")
 }

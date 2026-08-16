@@ -1,0 +1,14 @@
+{
+  "Common": {"appName":"Baan Prayat","loading":"Loading","retry":"Try again","estimated":"Estimated"},
+  "Nav": {"dashboard":"Home","devices":"Devices","energy":"Energy","schedules":"Schedules","settings":"Settings"},
+  "Dashboard": {
+    "eyebrow":"LIVE HOME ENERGY","greeting":"Good evening","title":"Your home is using energy efficiently.",
+    "subtitle":"See what is on, control smart plugs, and understand today’s electricity use.",
+    "livePower":"Live power","todayEnergy":"Energy today","estimatedCost":"Estimated cost","online":"Online",
+    "devices":"My devices","viewAll":"View all","todayUsage":"Today’s usage","weeklyAverage":"7-day average",
+    "nextSchedule":"Next schedule","at":"at","updated":"Updated just now","demo":"Simulator data","empty":"No smart plugs yet. Add your first device to begin monitoring energy."
+  },
+  "Device": {"on":"On","off":"Off","online":"Online","offline":"Offline","pending":"Changing…","failed":"Could not change device state"},
+  "Auth": {"login":"Sign in","register":"Create account","email":"Email","password":"Password","name":"Display name","noAccount":"New here?","hasAccount":"Already registered?","submitLogin":"Sign in","submitRegister":"Create account","checkEmail":"Check your email to confirm your account.","error":"Authentication failed. Please check your details."},
+  "Pages": {"devicesTitle":"Devices","devicesBody":"Manage smart plugs, rooms, and connectivity.","energyTitle":"Energy","energyBody":"Explore consumption, trends, and estimated electricity cost.","schedulesTitle":"Schedules","schedulesBody":"Create reliable one-time and repeating relay schedules.","settingsTitle":"Settings","settingsBody":"Manage language, profile, timezone, and electricity tariff.","coming":"This workspace is ready for the next connected feature."}
+}

@@ -1,6 +1,6 @@
 begin;
 
-select plan(14);
+select plan(21);
 
 select has_table('public', 'profiles', 'profiles table exists');
 select has_table('public', 'homes', 'homes table exists');
@@ -8,6 +8,13 @@ select has_table('public', 'home_members', 'home_members table exists');
 select has_table('public', 'rooms', 'rooms table exists');
 select has_table('public', 'devices', 'devices table exists');
 select has_table('public', 'device_states', 'device_states table exists');
+select has_table('public', 'telemetry_readings', 'telemetry table exists');
+select has_table('public', 'energy_aggregates', 'energy aggregates table exists');
+select has_table('public', 'device_commands', 'device commands table exists');
+select has_table('public', 'device_command_outbox', 'command outbox table exists');
+select has_table('public', 'device_schedules', 'device schedules table exists');
+select has_table('public', 'schedule_executions', 'schedule executions table exists');
+select has_table('public', 'electricity_tariffs', 'electricity tariffs table exists');
 
 select ok(
   (select relrowsecurity from pg_class where oid = 'public.homes'::regclass),
