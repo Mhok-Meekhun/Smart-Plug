@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prebuild": "pnpm --filter @smart-home/domain build",
     "build": "prisma generate && nest build",
     "clean": "rm -rf dist coverage src/generated",
     "dev": "prisma generate && nest start --watch",
