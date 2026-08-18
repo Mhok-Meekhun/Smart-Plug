@@ -3,6 +3,28 @@ import type { PrismaService } from "../database/prisma.service.js";
 import { DevicesService } from "./devices.service.js";
 
 describe("DevicesService", () => {
+  it("loads device detail only through the authenticated membership boundary", async () => {
+    const findFirst = vi.fn().mockResolvedValue({
+      id: "0af11e45-676d-4ac2-8d45-867ddb0e0e90",
+      ratedCurrentA: { toNumber: () => 16 },
+      state: null
+    });
+    const prisma = { device: { findFirst } } as unknown as PrismaService;
+    const service = new DevicesService(prisma);
+
+    await service.getForUser(
+      "3f683723-da0e-42cd-8407-4b3f524f5af3",
+      "0af11e45-676d-4ac2-8d45-867ddb0e0e90"
+    );
+
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: "0af11e45-676d-4ac2-8d45-867ddb0e0e90",
+        home: { members: { some: { userId: "3f683723-da0e-42cd-8407-4b3f524f5af3" } } }
+      }
+    }));
+  });
+
   it("scopes device filters inside the authenticated membership boundary", async () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const prisma = { device: { findMany } } as unknown as PrismaService;

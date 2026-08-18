@@ -1,5 +1,19 @@
-import { Body, Controller, Get, Headers, Param, Post, Query } from "@nestjs/common";
-import { ApiAcceptedResponse, ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from "@nestjs/swagger";
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  Post,
+  Query,
+} from "@nestjs/common";
+import {
+  ApiAcceptedResponse,
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiTags,
+} from "@nestjs/swagger";
 import { z } from "zod";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { CurrentUser } from "../auth/current-user.decorator.js";
@@ -12,17 +26,19 @@ const deviceListQuerySchema = z
     roomId: z.string().uuid().optional(),
     connectionStatus: z
       .enum(["ONLINE", "OFFLINE", "CONNECTING", "ERROR"])
-      .optional()
+      .optional(),
   })
   .strict();
 
 const relayCommandBodySchema = z.object({ relayState: z.boolean() }).strict();
-const simulatedDeviceBodySchema = z.object({
-  homeId: z.string().uuid(),
-  roomId: z.string().uuid(),
-  name: z.string().trim().min(1).max(120),
-  icon: z.string().trim().min(1).max(60).optional()
-}).strict();
+const simulatedDeviceBodySchema = z
+  .object({
+    homeId: z.string().uuid(),
+    roomId: z.string().uuid(),
+    name: z.string().trim().min(1).max(120),
+    icon: z.string().trim().min(1).max(60).optional(),
+  })
+  .strict();
 const deviceIdSchema = z.string().uuid();
 const idempotencyKeySchema = z.string().min(8).max(120);
 
@@ -36,40 +52,61 @@ export class DevicesController {
   @ApiOkResponse({ description: "Devices visible to the authenticated user" })
   list(
     @CurrentUser() user: AuthenticatedUser,
-    @Query() rawQuery: Record<string, unknown>
+    @Query() rawQuery: Record<string, unknown>,
   ) {
     const query = parseRequest(deviceListQuerySchema, rawQuery);
     return this.devices.listForUser(user.id, query);
   }
 
+  @Get(":deviceId")
+  @ApiOkResponse({
+    description: "Authorized device detail and latest confirmed state",
+  })
+  get(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("deviceId") rawDeviceId: string,
+  ) {
+    return this.devices.getForUser(
+      user.id,
+      parseRequest(deviceIdSchema, rawDeviceId),
+    );
+  }
+
   @Post("simulated")
-  @ApiCreatedResponse({ description: "Simulated smart plug created for UI and API testing" })
+  @ApiCreatedResponse({
+    description: "Simulated smart plug created for UI and API testing",
+  })
   createSimulated(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() rawBody: unknown
+    @Body() rawBody: unknown,
   ) {
     return this.devices.createSimulatedDevice(
       user.id,
-      parseRequest(simulatedDeviceBodySchema, rawBody)
+      parseRequest(simulatedDeviceBodySchema, rawBody),
     );
   }
 
   @Post(":deviceId/commands/relay")
-  @ApiAcceptedResponse({ description: "Durable relay command accepted for delivery" })
+  @ApiAcceptedResponse({
+    description: "Durable relay command accepted for delivery",
+  })
   requestRelayState(
     @CurrentUser() user: AuthenticatedUser,
     @Param("deviceId") rawDeviceId: string,
     @Headers("idempotency-key") rawIdempotencyKey: string | undefined,
-    @Body() rawBody: unknown
+    @Body() rawBody: unknown,
   ) {
     const deviceId = parseRequest(deviceIdSchema, rawDeviceId);
-    const idempotencyKey = parseRequest(idempotencyKeySchema, rawIdempotencyKey);
+    const idempotencyKey = parseRequest(
+      idempotencyKeySchema,
+      rawIdempotencyKey,
+    );
     const body = parseRequest(relayCommandBodySchema, rawBody);
     return this.devices.requestRelayState(
       user.id,
       deviceId,
       body.relayState,
-      idempotencyKey
+      idempotencyKey,
     );
   }
 }

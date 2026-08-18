@@ -1,4 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { DeviceConnectionStatus } from "../generated/prisma/enums.js";
 import { PrismaService } from "../database/prisma.service.js";
@@ -13,6 +17,57 @@ export interface DeviceListFilters {
 export class DevicesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getForUser(userId: string, deviceId: string) {
+    const device = await this.prisma.device.findFirst({
+      where: { id: deviceId, home: { members: { some: { userId } } } },
+      select: {
+        id: true,
+        homeId: true,
+        roomId: true,
+        name: true,
+        type: true,
+        icon: true,
+        firmwareVersion: true,
+        ratedCurrentA: true,
+        lifecycleStatus: true,
+        createdAt: true,
+        home: { select: { name: true, timezone: true, currency: true } },
+        room: { select: { name: true } },
+        state: {
+          select: {
+            connectionStatus: true,
+            relayState: true,
+            voltageV: true,
+            currentA: true,
+            powerW: true,
+            energyKwh: true,
+            lastSeenAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+    if (!device) {
+      throw new NotFoundException({
+        code: "DEVICE_NOT_FOUND",
+        messageKey: "errors.deviceNotFound",
+      });
+    }
+    return {
+      ...device,
+      ratedCurrentA: device.ratedCurrentA.toNumber(),
+      state: device.state
+        ? {
+            ...device.state,
+            voltageV: this.decimalToNumber(device.state.voltageV),
+            currentA: this.decimalToNumber(device.state.currentA),
+            powerW: this.decimalToNumber(device.state.powerW),
+            energyKwh: this.decimalToNumber(device.state.energyKwh),
+          }
+        : null,
+    };
+  }
+
   async listForUser(userId: string, filters: DeviceListFilters) {
     const devices = await this.prisma.device.findMany({
       where: {
@@ -21,7 +76,7 @@ export class DevicesService {
         ...(filters.roomId ? { roomId: filters.roomId } : {}),
         ...(filters.connectionStatus
           ? { state: { connectionStatus: filters.connectionStatus } }
-          : {})
+          : {}),
       },
       select: {
         id: true,
@@ -41,11 +96,11 @@ export class DevicesService {
             currentA: true,
             powerW: true,
             energyKwh: true,
-            lastSeenAt: true
-          }
-        }
+            lastSeenAt: true,
+          },
+        },
       },
-      orderBy: [{ room: { sortOrder: "asc" } }, { name: "asc" }]
+      orderBy: [{ room: { sortOrder: "asc" } }, { name: "asc" }],
     });
 
     return devices.map((device) => ({
@@ -56,28 +111,33 @@ export class DevicesService {
             voltageV: this.decimalToNumber(device.state.voltageV),
             currentA: this.decimalToNumber(device.state.currentA),
             powerW: this.decimalToNumber(device.state.powerW),
-            energyKwh: this.decimalToNumber(device.state.energyKwh)
+            energyKwh: this.decimalToNumber(device.state.energyKwh),
           }
-        : null
+        : null,
     }));
   }
 
   async createSimulatedDevice(
     userId: string,
-    input: { homeId: string; roomId: string; name: string; icon?: string | undefined }
+    input: {
+      homeId: string;
+      roomId: string;
+      name: string;
+      icon?: string | undefined;
+    },
   ) {
     const authorizedHome = await this.prisma.home.findFirst({
       where: {
         id: input.homeId,
         members: { some: { userId, role: "OWNER" } },
-        rooms: { some: { id: input.roomId } }
+        rooms: { some: { id: input.roomId } },
       },
-      select: { id: true }
+      select: { id: true },
     });
     if (!authorizedHome) {
       throw new NotFoundException({
         code: "HOME_OR_ROOM_NOT_FOUND",
-        messageKey: "errors.homeOrRoomNotFound"
+        messageKey: "errors.homeOrRoomNotFound",
       });
     }
 
@@ -102,9 +162,9 @@ export class DevicesService {
               powerW: 0,
               energyKwh: 0,
               sequence: 0,
-              lastSeenAt: now
-            }
-          }
+              lastSeenAt: now,
+            },
+          },
         },
         select: {
           id: true,
@@ -115,11 +175,11 @@ export class DevicesService {
           icon: true,
           firmwareVersion: true,
           lifecycleStatus: true,
-          state: true
-        }
+          state: true,
+        },
       });
       await transaction.energyAggregate.createMany({
-        data: this.simulatedDailyAggregates(created.id, now)
+        data: this.simulatedDailyAggregates(created.id, now),
       });
       return created;
     });
@@ -133,9 +193,9 @@ export class DevicesService {
             currentA: this.decimalToNumber(device.state.currentA),
             powerW: this.decimalToNumber(device.state.powerW),
             energyKwh: this.decimalToNumber(device.state.energyKwh),
-            sequence: device.state.sequence?.toString() ?? null
+            sequence: device.state.sequence?.toString() ?? null,
           }
-        : null
+        : null,
     };
   }
 
@@ -143,30 +203,30 @@ export class DevicesService {
     userId: string,
     deviceId: string,
     desiredRelayState: boolean,
-    idempotencyKey: string
+    idempotencyKey: string,
   ) {
     const device = await this.prisma.device.findFirst({
       where: {
         id: deviceId,
-        home: { members: { some: { userId } } }
+        home: { members: { some: { userId } } },
       },
-      select: { id: true, type: true }
+      select: { id: true, type: true },
     });
     if (!device) {
       throw new NotFoundException({
         code: "DEVICE_NOT_FOUND",
-        messageKey: "errors.deviceNotFound"
+        messageKey: "errors.deviceNotFound",
       });
     }
 
     const existing = await this.prisma.deviceCommand.findUnique({
-      where: { deviceId_idempotencyKey: { deviceId, idempotencyKey } }
+      where: { deviceId_idempotencyKey: { deviceId, idempotencyKey } },
     });
     if (existing) {
       if (existing.desiredRelayState !== desiredRelayState) {
         throw new ConflictException({
           code: "IDEMPOTENCY_KEY_REUSED",
-          messageKey: "errors.idempotencyKeyReused"
+          messageKey: "errors.idempotencyKeyReused",
         });
       }
       return this.commandResponse(existing);
@@ -188,8 +248,8 @@ export class DevicesService {
             acknowledgedAt: requestedAt,
             expiresAt,
             attemptCount: 1,
-            acknowledgementPayload: { simulator: true }
-          }
+            acknowledgementPayload: { simulator: true },
+          },
         });
         await transaction.deviceState.update({
           where: { deviceId },
@@ -198,8 +258,8 @@ export class DevicesService {
             currentA: desiredRelayState ? 0.28 : 0,
             powerW: desiredRelayState ? 65 : 0,
             lastSeenAt: requestedAt,
-            sequence: { increment: 1 }
-          }
+            sequence: { increment: 1 },
+          },
         });
         return created;
       });
@@ -214,11 +274,11 @@ export class DevicesService {
           desiredRelayState,
           idempotencyKey,
           requestedAt,
-          expiresAt
-        }
+          expiresAt,
+        },
       });
       await transaction.deviceCommandOutbox.create({
-        data: { commandId: created.id }
+        data: { commandId: created.id },
       });
       return created;
     });
@@ -241,7 +301,7 @@ export class DevicesService {
       status: command.status,
       requestedAt: command.requestedAt,
       expiresAt: command.expiresAt,
-      confirmed: command.status === "ACKNOWLEDGED"
+      confirmed: command.status === "ACKNOWLEDGED",
     };
   }
 
@@ -251,7 +311,11 @@ export class DevicesService {
 
   private simulatedDailyAggregates(deviceId: string, now: Date) {
     const pattern = [0.82, 1.04, 0.76, 1.18, 1.31, 0.94, 1.12];
-    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const today = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+    );
     return pattern.map((energyKwh, index) => ({
       deviceId,
       bucketSize: "DAY" as const,
@@ -261,7 +325,7 @@ export class DevicesService {
       averagePowerW: Math.round((energyKwh * 1000) / 24),
       peakPowerW: 65,
       minimumVoltageV: 226.4,
-      maximumVoltageV: 233.2
+      maximumVoltageV: 233.2,
     }));
   }
 }
