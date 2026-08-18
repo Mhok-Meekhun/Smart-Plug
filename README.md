@@ -15,6 +15,13 @@ infrastructure.
 The connected energy screen reads daily aggregates from the API and calculates
 an explicitly labelled estimated cost from the owner-configurable flat tariff.
 
+The Add Device screen now implements the software pairing milestone: expiring
+single-use codes, transactional ownership claim, staged per-device credentials,
+rotation and revocation APIs, sanitized audit events, and a virtual pairing path
+that exercises the same controls without hardware or paid services. Physical
+SoftAP guidance is present, while firmware bootstrap exchange and managed MQTT
+credential registration remain intentionally deferred.
+
 ## Workspace
 
 - `packages/contracts` - MQTT topics and Zod payload contracts.

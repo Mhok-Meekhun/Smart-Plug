@@ -1,4 +1,3 @@
-// Generated from Supabase project xxzhkgpyfchvcwvrjzer. Do not edit manually.
 export type Json =
   | string
   | number
@@ -122,6 +121,214 @@ export type Database = {
           },
         ]
       }
+      device_credentials: {
+        Row: {
+          activated_at: string | null
+          credential_id: string
+          device_id: string
+          expires_at: string | null
+          id: string
+          issued_at: string
+          issued_by: string | null
+          last_used_at: string | null
+          revoked_at: string | null
+          rotated_from_id: string | null
+          secret_hash: string
+          status: Database["public"]["Enums"]["device_credential_status"]
+          updated_at: string
+        }
+        Insert: {
+          activated_at?: string | null
+          credential_id: string
+          device_id: string
+          expires_at?: string | null
+          id?: string
+          issued_at?: string
+          issued_by?: string | null
+          last_used_at?: string | null
+          revoked_at?: string | null
+          rotated_from_id?: string | null
+          secret_hash: string
+          status?: Database["public"]["Enums"]["device_credential_status"]
+          updated_at?: string
+        }
+        Update: {
+          activated_at?: string | null
+          credential_id?: string
+          device_id?: string
+          expires_at?: string | null
+          id?: string
+          issued_at?: string
+          issued_by?: string | null
+          last_used_at?: string | null
+          revoked_at?: string | null
+          rotated_from_id?: string | null
+          secret_hash?: string
+          status?: Database["public"]["Enums"]["device_credential_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_credentials_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_credentials_issued_by_fkey"
+            columns: ["issued_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_credentials_rotated_from_id_fkey"
+            columns: ["rotated_from_id"]
+            isOneToOne: false
+            referencedRelation: "device_credentials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      device_pairing_tokens: {
+        Row: {
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          created_by: string | null
+          device_id: string | null
+          expires_at: string
+          firmware_version: string | null
+          hardware_id: string
+          id: string
+          is_virtual: boolean
+          revoked_at: string | null
+          status: Database["public"]["Enums"]["device_pairing_status"]
+          token_hash: string
+          updated_at: string
+        }
+        Insert: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          device_id?: string | null
+          expires_at: string
+          firmware_version?: string | null
+          hardware_id: string
+          id?: string
+          is_virtual?: boolean
+          revoked_at?: string | null
+          status?: Database["public"]["Enums"]["device_pairing_status"]
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          device_id?: string | null
+          expires_at?: string
+          firmware_version?: string | null
+          hardware_id?: string
+          id?: string
+          is_virtual?: boolean
+          revoked_at?: string | null
+          status?: Database["public"]["Enums"]["device_pairing_status"]
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_pairing_tokens_claimed_by_fkey"
+            columns: ["claimed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_pairing_tokens_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_pairing_tokens_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: true
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      device_provisioning_events: {
+        Row: {
+          action: string
+          actor_user_id: string | null
+          created_at: string
+          device_id: string | null
+          home_id: string | null
+          id: number
+          metadata: Json
+          outcome: string
+          pairing_token_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_user_id?: string | null
+          created_at?: string
+          device_id?: string | null
+          home_id?: string | null
+          id?: never
+          metadata?: Json
+          outcome: string
+          pairing_token_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string | null
+          created_at?: string
+          device_id?: string | null
+          home_id?: string | null
+          id?: never
+          metadata?: Json
+          outcome?: string
+          pairing_token_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_provisioning_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_provisioning_events_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_provisioning_events_home_id_fkey"
+            columns: ["home_id"]
+            isOneToOne: false
+            referencedRelation: "homes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_provisioning_events_pairing_token_id_fkey"
+            columns: ["pairing_token_id"]
+            isOneToOne: false
+            referencedRelation: "device_pairing_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       device_schedules: {
         Row: {
           created_at: string
@@ -138,7 +345,7 @@ export type Database = {
           next_run_at: string | null
           timezone: string
           updated_at: string
-          weekdays: number[] | null
+          weekdays: number[]
         }
         Insert: {
           created_at?: string
@@ -155,7 +362,7 @@ export type Database = {
           next_run_at?: string | null
           timezone?: string
           updated_at?: string
-          weekdays?: number[] | null
+          weekdays?: number[]
         }
         Update: {
           created_at?: string
@@ -172,7 +379,7 @@ export type Database = {
           next_run_at?: string | null
           timezone?: string
           updated_at?: string
-          weekdays?: number[] | null
+          weekdays?: number[]
         }
         Relationships: [
           {
@@ -656,7 +863,9 @@ export type Database = {
         | "TIMED_OUT"
         | "CANCELLED"
       device_connection_status: "ONLINE" | "OFFLINE" | "CONNECTING" | "ERROR"
+      device_credential_status: "STAGED" | "ACTIVE" | "REVOKED"
       device_lifecycle_status: "UNPAIRED" | "ACTIVE" | "DISABLED" | "REVOKED"
+      device_pairing_status: "AVAILABLE" | "CLAIMED" | "REVOKED"
       energy_bucket_size: "MINUTE" | "HOUR" | "DAY"
       home_member_role: "OWNER" | "MEMBER"
       schedule_execution_status:
@@ -802,7 +1011,9 @@ export const Constants = {
         "CANCELLED",
       ],
       device_connection_status: ["ONLINE", "OFFLINE", "CONNECTING", "ERROR"],
+      device_credential_status: ["STAGED", "ACTIVE", "REVOKED"],
       device_lifecycle_status: ["UNPAIRED", "ACTIVE", "DISABLED", "REVOKED"],
+      device_pairing_status: ["AVAILABLE", "CLAIMED", "REVOKED"],
       energy_bucket_size: ["MINUTE", "HOUR", "DAY"],
       home_member_role: ["OWNER", "MEMBER"],
       schedule_execution_status: [

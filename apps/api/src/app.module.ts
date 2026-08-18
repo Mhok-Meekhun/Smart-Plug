@@ -8,10 +8,11 @@ import { DevicesModule } from "./devices/devices.module.js";
 import { EnergyModule } from "./energy/energy.module.js";
 import { HealthController } from "./health/health.controller.js";
 import { HomesModule } from "./homes/homes.module.js";
+import { ProvisioningModule } from "./provisioning/provisioning.module.js";
 import { SchedulesModule } from "./schedules/schedules.module.js";
 
 @Module({
-  imports: [DatabaseModule, AuthModule, AccountModule, HomesModule, DevicesModule, EnergyModule, SchedulesModule],
+  imports: [DatabaseModule, AuthModule, AccountModule, HomesModule, DevicesModule, EnergyModule, SchedulesModule, ProvisioningModule],
   controllers: [HealthController],
   providers: [
     {

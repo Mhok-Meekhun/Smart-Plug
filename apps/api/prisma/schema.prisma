@@ -76,34 +76,55 @@ enum ScheduleExecutionStatus {
   @@map("schedule_execution_status")
 }
 
+enum DevicePairingStatus {
+  AVAILABLE
+  CLAIMED
+  REVOKED
+
+  @@map("device_pairing_status")
+}
+
+enum DeviceCredentialStatus {
+  STAGED
+  ACTIVE
+  REVOKED
+
+  @@map("device_credential_status")
+}
+
 model Profile {
-  id           String       @id @db.Uuid
-  displayName  String?      @map("display_name") @db.VarChar(120)
-  locale       AppLocale    @default(TH)
-  timezone     String       @default("Asia/Bangkok") @db.VarChar(80)
-  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
-  createdHomes Home[]       @relation("HomeCreator")
-  memberships  HomeMember[]
-  commands     DeviceCommand[]
-  schedules    DeviceSchedule[]
+  id                   String                    @id @db.Uuid
+  displayName          String?                   @map("display_name") @db.VarChar(120)
+  locale               AppLocale                 @default(TH)
+  timezone             String                    @default("Asia/Bangkok") @db.VarChar(80)
+  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdHomes         Home[]                    @relation("HomeCreator")
+  memberships          HomeMember[]
+  commands             DeviceCommand[]
+  schedules            DeviceSchedule[]
+  pairingTokensCreated DevicePairingToken[]      @relation("PairingTokenCreator")
+  pairingTokensClaimed DevicePairingToken[]      @relation("PairingTokenClaimer")
+  credentialsIssued    DeviceCredential[]        @relation("CredentialIssuer")
+  provisioningEvents   DeviceProvisioningEvent[]
 
   @@map("profiles")
 }
 
 model Home {
-  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String       @db.VarChar(120)
-  timezone  String       @default("Asia/Bangkok") @db.VarChar(80)
-  currency  String       @default("THB") @db.Char(3)
-  createdBy String       @map("created_by") @db.Uuid
-  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
-  creator   Profile      @relation("HomeCreator", fields: [createdBy], references: [id], onDelete: Restrict)
-  members   HomeMember[]
-  rooms     Room[]
-  devices   Device[]
-  tariffs   ElectricityTariff[]
+  id                 String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String                    @db.VarChar(120)
+  timezone           String                    @default("Asia/Bangkok") @db.VarChar(80)
+  currency           String                    @default("THB") @db.Char(3)
+  createdBy          String                    @map("created_by") @db.Uuid
+  createdAt          DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  creator            Profile                   @relation("HomeCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  members            HomeMember[]
+  rooms              Room[]
+  devices            Device[]
+  tariffs            ElectricityTariff[]
+  provisioningEvents DeviceProvisioningEvent[]
 
   @@index([createdBy])
   @@map("homes")
@@ -139,25 +160,28 @@ model Room {
 }
 
 model Device {
-  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hardwareId      String                @unique @map("hardware_id") @db.VarChar(120)
-  homeId          String                @map("home_id") @db.Uuid
-  roomId          String?               @map("room_id") @db.Uuid
-  name            String                @db.VarChar(120)
-  type            String                @default("SMART_PLUG") @db.VarChar(40)
-  icon            String?               @db.VarChar(60)
-  firmwareVersion String?               @map("firmware_version") @db.VarChar(40)
-  ratedCurrentA   Decimal               @default(16) @map("rated_current_a") @db.Decimal(6, 2)
-  lifecycleStatus DeviceLifecycleStatus @default(UNPAIRED) @map("lifecycle_status")
-  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
-  home            Home                  @relation(fields: [homeId], references: [id], onDelete: Cascade)
-  room            Room?                 @relation(fields: [roomId], references: [id], onDelete: SetNull)
-  state           DeviceState?
-  telemetry       TelemetryReading[]
-  aggregates      EnergyAggregate[]
-  commands        DeviceCommand[]
-  schedules       DeviceSchedule[]
+  id                 String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hardwareId         String                    @unique @map("hardware_id") @db.VarChar(120)
+  homeId             String                    @map("home_id") @db.Uuid
+  roomId             String?                   @map("room_id") @db.Uuid
+  name               String                    @db.VarChar(120)
+  type               String                    @default("SMART_PLUG") @db.VarChar(40)
+  icon               String?                   @db.VarChar(60)
+  firmwareVersion    String?                   @map("firmware_version") @db.VarChar(40)
+  ratedCurrentA      Decimal                   @default(16) @map("rated_current_a") @db.Decimal(6, 2)
+  lifecycleStatus    DeviceLifecycleStatus     @default(UNPAIRED) @map("lifecycle_status")
+  createdAt          DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  home               Home                      @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  room               Room?                     @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  state              DeviceState?
+  telemetry          TelemetryReading[]
+  aggregates         EnergyAggregate[]
+  commands           DeviceCommand[]
+  schedules          DeviceSchedule[]
+  pairingToken       DevicePairingToken?
+  credentials        DeviceCredential[]
+  provisioningEvents DeviceProvisioningEvent[]
 
   @@index([homeId, roomId])
   @@index([homeId, lifecycleStatus])
@@ -165,17 +189,17 @@ model Device {
 }
 
 model DeviceState {
-  deviceId        String                 @id @map("device_id") @db.Uuid
+  deviceId         String                 @id @map("device_id") @db.Uuid
   connectionStatus DeviceConnectionStatus @default(OFFLINE) @map("connection_status")
-  relayState      Boolean                @default(false) @map("relay_state")
-  voltageV        Decimal?               @map("voltage_v") @db.Decimal(7, 2)
-  currentA        Decimal?               @map("current_a") @db.Decimal(9, 3)
-  powerW          Decimal?               @map("power_w") @db.Decimal(10, 2)
-  energyKwh       Decimal?               @map("energy_kwh") @db.Decimal(14, 6)
-  sequence        BigInt?
-  lastSeenAt      DateTime?              @map("last_seen_at") @db.Timestamptz(3)
-  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
-  device          Device                 @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  relayState       Boolean                @default(false) @map("relay_state")
+  voltageV         Decimal?               @map("voltage_v") @db.Decimal(7, 2)
+  currentA         Decimal?               @map("current_a") @db.Decimal(9, 3)
+  powerW           Decimal?               @map("power_w") @db.Decimal(10, 2)
+  energyKwh        Decimal?               @map("energy_kwh") @db.Decimal(14, 6)
+  sequence         BigInt?
+  lastSeenAt       DateTime?              @map("last_seen_at") @db.Timestamptz(3)
+  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  device           Device                 @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   @@index([connectionStatus, lastSeenAt])
   @@map("device_states")
@@ -204,17 +228,17 @@ model TelemetryReading {
 }
 
 model EnergyAggregate {
-  deviceId       String           @map("device_id") @db.Uuid
-  bucketSize     EnergyBucketSize @map("bucket_size")
-  bucketStart    DateTime         @map("bucket_start") @db.Timestamptz(3)
-  sampleCount    Int              @map("sample_count")
-  energyKwh      Decimal          @map("energy_kwh") @db.Decimal(14, 6)
-  averagePowerW  Decimal          @map("average_power_w") @db.Decimal(10, 2)
-  peakPowerW     Decimal          @map("peak_power_w") @db.Decimal(10, 2)
-  minimumVoltageV Decimal?        @map("minimum_voltage_v") @db.Decimal(7, 2)
-  maximumVoltageV Decimal?        @map("maximum_voltage_v") @db.Decimal(7, 2)
-  calculatedAt   DateTime         @default(now()) @map("calculated_at") @db.Timestamptz(3)
-  device         Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  deviceId        String           @map("device_id") @db.Uuid
+  bucketSize      EnergyBucketSize @map("bucket_size")
+  bucketStart     DateTime         @map("bucket_start") @db.Timestamptz(3)
+  sampleCount     Int              @map("sample_count")
+  energyKwh       Decimal          @map("energy_kwh") @db.Decimal(14, 6)
+  averagePowerW   Decimal          @map("average_power_w") @db.Decimal(10, 2)
+  peakPowerW      Decimal          @map("peak_power_w") @db.Decimal(10, 2)
+  minimumVoltageV Decimal?         @map("minimum_voltage_v") @db.Decimal(7, 2)
+  maximumVoltageV Decimal?         @map("maximum_voltage_v") @db.Decimal(7, 2)
+  calculatedAt    DateTime         @default(now()) @map("calculated_at") @db.Timestamptz(3)
+  device          Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   @@id([deviceId, bucketSize, bucketStart])
   @@index([bucketSize, bucketStart(sort: Desc), deviceId])
@@ -222,25 +246,25 @@ model EnergyAggregate {
 }
 
 model DeviceCommand {
-  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  deviceId              String              @map("device_id") @db.Uuid
-  requestedBy           String              @map("requested_by") @db.Uuid
-  desiredRelayState     Boolean             @map("desired_relay_state")
-  status                DeviceCommandStatus @default(PENDING)
-  idempotencyKey        String              @map("idempotency_key") @db.VarChar(120)
-  requestedAt           DateTime            @default(now()) @map("requested_at") @db.Timestamptz(3)
-  sentAt                DateTime?           @map("sent_at") @db.Timestamptz(3)
-  acknowledgedAt        DateTime?           @map("acknowledged_at") @db.Timestamptz(3)
-  expiresAt             DateTime            @map("expires_at") @db.Timestamptz(3)
-  attemptCount          Int                 @default(0) @map("attempt_count") @db.SmallInt
-  failureCode           String?             @map("failure_code") @db.VarChar(80)
-  failureMessage        String?             @map("failure_message") @db.VarChar(300)
-  acknowledgementPayload Json?              @map("acknowledgement_payload")
-  updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
-  device                Device              @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  requester             Profile             @relation(fields: [requestedBy], references: [id], onDelete: Restrict)
-  outbox                DeviceCommandOutbox?
-  executions            ScheduleExecution[]
+  id                     String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deviceId               String               @map("device_id") @db.Uuid
+  requestedBy            String               @map("requested_by") @db.Uuid
+  desiredRelayState      Boolean              @map("desired_relay_state")
+  status                 DeviceCommandStatus  @default(PENDING)
+  idempotencyKey         String               @map("idempotency_key") @db.VarChar(120)
+  requestedAt            DateTime             @default(now()) @map("requested_at") @db.Timestamptz(3)
+  sentAt                 DateTime?            @map("sent_at") @db.Timestamptz(3)
+  acknowledgedAt         DateTime?            @map("acknowledged_at") @db.Timestamptz(3)
+  expiresAt              DateTime             @map("expires_at") @db.Timestamptz(3)
+  attemptCount           Int                  @default(0) @map("attempt_count") @db.SmallInt
+  failureCode            String?              @map("failure_code") @db.VarChar(80)
+  failureMessage         String?              @map("failure_message") @db.VarChar(300)
+  acknowledgementPayload Json?                @map("acknowledgement_payload")
+  updatedAt              DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  device                 Device               @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  requester              Profile              @relation(fields: [requestedBy], references: [id], onDelete: Restrict)
+  outbox                 DeviceCommandOutbox?
+  executions             ScheduleExecution[]
 
   @@unique([deviceId, idempotencyKey])
   @@index([deviceId, requestedAt(sort: Desc)])
@@ -249,37 +273,37 @@ model DeviceCommand {
 }
 
 model DeviceCommandOutbox {
-  commandId   String         @id @map("command_id") @db.Uuid
-  availableAt DateTime       @default(now()) @map("available_at") @db.Timestamptz(3)
-  lockedAt    DateTime?      @map("locked_at") @db.Timestamptz(3)
-  lockedBy    String?        @map("locked_by") @db.VarChar(120)
-  publishedAt DateTime?      @map("published_at") @db.Timestamptz(3)
-  lastError   String?        @map("last_error") @db.VarChar(300)
-  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-  command     DeviceCommand  @relation(fields: [commandId], references: [id], onDelete: Cascade)
+  commandId   String        @id @map("command_id") @db.Uuid
+  availableAt DateTime      @default(now()) @map("available_at") @db.Timestamptz(3)
+  lockedAt    DateTime?     @map("locked_at") @db.Timestamptz(3)
+  lockedBy    String?       @map("locked_by") @db.VarChar(120)
+  publishedAt DateTime?     @map("published_at") @db.Timestamptz(3)
+  lastError   String?       @map("last_error") @db.VarChar(300)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  command     DeviceCommand @relation(fields: [commandId], references: [id], onDelete: Cascade)
 
   @@index([availableAt])
   @@map("device_command_outbox")
 }
 
 model DeviceSchedule {
-  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  deviceId          String       @map("device_id") @db.Uuid
-  createdBy         String       @map("created_by") @db.Uuid
-  name              String       @db.VarChar(120)
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deviceId          String              @map("device_id") @db.Uuid
+  createdBy         String              @map("created_by") @db.Uuid
+  name              String              @db.VarChar(120)
   kind              ScheduleKind
-  desiredRelayState Boolean      @map("desired_relay_state")
-  timezone          String       @default("Asia/Bangkok") @db.VarChar(80)
-  executeAt         DateTime?    @map("execute_at") @db.Timestamptz(3)
-  localTime         DateTime?    @map("local_time") @db.Time(0)
+  desiredRelayState Boolean             @map("desired_relay_state")
+  timezone          String              @default("Asia/Bangkok") @db.VarChar(80)
+  executeAt         DateTime?           @map("execute_at") @db.Timestamptz(3)
+  localTime         DateTime?           @map("local_time") @db.Time(0)
   weekdays          Int[]
-  enabled           Boolean      @default(true)
-  nextRunAt         DateTime?    @map("next_run_at") @db.Timestamptz(3)
-  lastRunAt         DateTime?    @map("last_run_at") @db.Timestamptz(3)
-  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
-  device            Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  creator           Profile      @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  enabled           Boolean             @default(true)
+  nextRunAt         DateTime?           @map("next_run_at") @db.Timestamptz(3)
+  lastRunAt         DateTime?           @map("last_run_at") @db.Timestamptz(3)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  device            Device              @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  creator           Profile             @relation(fields: [createdBy], references: [id], onDelete: Restrict)
   executions        ScheduleExecution[]
 
   @@index([deviceId, createdAt(sort: Desc)])
@@ -306,18 +330,90 @@ model ScheduleExecution {
 }
 
 model ElectricityTariff {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  homeId         String   @map("home_id") @db.Uuid
-  name           String   @db.VarChar(120)
-  currency       String   @default("THB") @db.Char(3)
-  flatRatePerKwh Decimal  @map("flat_rate_per_kwh") @db.Decimal(12, 4)
-  effectiveFrom  DateTime @map("effective_from") @db.Date
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  homeId         String    @map("home_id") @db.Uuid
+  name           String    @db.VarChar(120)
+  currency       String    @default("THB") @db.Char(3)
+  flatRatePerKwh Decimal   @map("flat_rate_per_kwh") @db.Decimal(12, 4)
+  effectiveFrom  DateTime  @map("effective_from") @db.Date
   effectiveTo    DateTime? @map("effective_to") @db.Date
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-  home           Home     @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  home           Home      @relation(fields: [homeId], references: [id], onDelete: Cascade)
 
   @@unique([homeId, effectiveFrom])
   @@index([homeId, effectiveFrom(sort: Desc)])
   @@map("electricity_tariffs")
+}
+
+model DevicePairingToken {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hardwareId      String                    @map("hardware_id") @db.VarChar(120)
+  tokenHash       String                    @unique @map("token_hash") @db.Char(64)
+  status          DevicePairingStatus       @default(AVAILABLE)
+  firmwareVersion String?                   @map("firmware_version") @db.VarChar(40)
+  isVirtual       Boolean                   @default(false) @map("is_virtual")
+  createdBy       String?                   @map("created_by") @db.Uuid
+  claimedBy       String?                   @map("claimed_by") @db.Uuid
+  deviceId        String?                   @unique @map("device_id") @db.Uuid
+  expiresAt       DateTime                  @map("expires_at") @db.Timestamptz(3)
+  claimedAt       DateTime?                 @map("claimed_at") @db.Timestamptz(3)
+  revokedAt       DateTime?                 @map("revoked_at") @db.Timestamptz(3)
+  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  creator         Profile?                  @relation("PairingTokenCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  claimer         Profile?                  @relation("PairingTokenClaimer", fields: [claimedBy], references: [id], onDelete: SetNull)
+  device          Device?                   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  events          DeviceProvisioningEvent[]
+
+  @@index([hardwareId, createdAt(sort: Desc)])
+  @@index([createdBy, createdAt(sort: Desc)])
+  @@index([expiresAt])
+  @@map("device_pairing_tokens")
+}
+
+model DeviceCredential {
+  id            String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deviceId      String                 @map("device_id") @db.Uuid
+  credentialId  String                 @unique @map("credential_id") @db.VarChar(120)
+  secretHash    String                 @map("secret_hash") @db.Char(64)
+  status        DeviceCredentialStatus @default(STAGED)
+  rotatedFromId String?                @map("rotated_from_id") @db.Uuid
+  issuedBy      String?                @map("issued_by") @db.Uuid
+  issuedAt      DateTime               @default(now()) @map("issued_at") @db.Timestamptz(3)
+  activatedAt   DateTime?              @map("activated_at") @db.Timestamptz(3)
+  lastUsedAt    DateTime?              @map("last_used_at") @db.Timestamptz(3)
+  expiresAt     DateTime?              @map("expires_at") @db.Timestamptz(3)
+  revokedAt     DateTime?              @map("revoked_at") @db.Timestamptz(3)
+  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  device        Device                 @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  issuer        Profile?               @relation("CredentialIssuer", fields: [issuedBy], references: [id], onDelete: SetNull)
+  rotatedFrom   DeviceCredential?      @relation("CredentialRotation", fields: [rotatedFromId], references: [id], onDelete: SetNull)
+  rotations     DeviceCredential[]     @relation("CredentialRotation")
+
+  @@index([deviceId, issuedAt(sort: Desc)])
+  @@index([rotatedFromId])
+  @@map("device_credentials")
+}
+
+model DeviceProvisioningEvent {
+  id             BigInt              @id @default(autoincrement())
+  actorUserId    String?             @map("actor_user_id") @db.Uuid
+  homeId         String?             @map("home_id") @db.Uuid
+  deviceId       String?             @map("device_id") @db.Uuid
+  pairingTokenId String?             @map("pairing_token_id") @db.Uuid
+  action         String              @db.VarChar(60)
+  outcome        String              @db.VarChar(20)
+  metadata       Json                @default("{}")
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  actor          Profile?            @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  home           Home?               @relation(fields: [homeId], references: [id], onDelete: SetNull)
+  device         Device?             @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  pairingToken   DevicePairingToken? @relation(fields: [pairingTokenId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@index([homeId, createdAt(sort: Desc)])
+  @@index([deviceId, createdAt(sort: Desc)])
+  @@index([pairingTokenId])
+  @@map("device_provisioning_events")
 }
