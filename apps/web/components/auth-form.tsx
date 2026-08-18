@@ -4,6 +4,7 @@ import { ArrowRight, LoaderCircle, LockKeyhole, Mail, UserRound, Zap } from "luc
 import { useLocale, useTranslations } from "next-intl";
 import { useState, useTransition } from "react";
 import { Link, useRouter } from "../i18n/navigation";
+import { apiRequest } from "../lib/api-client";
 import { createClient } from "../lib/supabase/client";
 import { LanguageSwitcher } from "./language-switcher";
 
@@ -25,12 +26,22 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         if (mode === "login") {
           const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
           if (authError) throw authError;
+          await apiRequest("/v1/me", {
+            method: "PATCH",
+            body: JSON.stringify({ locale })
+          }).catch(() => undefined);
           router.replace("/dashboard"); router.refresh();
         } else {
           const displayName = String(formData.get("displayName") ?? "");
           const { data, error: authError } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName }, emailRedirectTo: `${window.location.origin}/${locale}/dashboard` } });
           if (authError) throw authError;
-          if (data.session) { router.replace("/dashboard"); router.refresh(); } else setNotice(t("checkEmail"));
+          if (data.session) {
+            await apiRequest("/v1/me", {
+              method: "PATCH",
+              body: JSON.stringify({ locale })
+            }).catch(() => undefined);
+            router.replace("/dashboard"); router.refresh();
+          } else setNotice(t("checkEmail"));
         }
       } catch { setError(t("error")); }
     });

@@ -8,7 +8,7 @@ const items = [
   { href: "/devices", key: "devices", icon: PlugZap },
   { href: "/energy", key: "energy", icon: BarChart3 },
   { href: "/schedules", key: "schedules", icon: CalendarClock },
-  { href: "/settings/electricity", key: "settings", icon: Settings2 }
+  { href: "/settings/profile", key: "settings", icon: Settings2 }
 ] as const;
 
 export async function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
