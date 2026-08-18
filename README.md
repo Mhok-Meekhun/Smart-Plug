@@ -12,6 +12,9 @@ explicit software-only smart-plug simulator, allowing the complete onboarding
 and confirmed test-control flow to be exercised before enabling paid IoT
 infrastructure.
 
+The connected energy screen reads daily aggregates from the API and calculates
+an explicitly labelled estimated cost from the owner-configurable flat tariff.
+
 ## Workspace
 
 - `packages/contracts` - MQTT topics and Zod payload contracts.

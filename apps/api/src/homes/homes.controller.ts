@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put } from "@nestjs/common";
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from "@nestjs/swagger";
 import { z } from "zod";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -15,6 +15,11 @@ const createHomeSchema = z.object({
 const createRoomSchema = z.object({
   name: z.string().trim().min(1).max(120),
   icon: z.string().trim().min(1).max(60).optional()
+}).strict();
+
+const tariffSchema = z.object({
+  name: z.string().trim().min(1).max(120).default("Estimated flat rate"),
+  flatRatePerKwh: z.number().positive().max(100)
 }).strict();
 
 @ApiTags("homes")
@@ -58,6 +63,29 @@ export class HomesController {
       user.id,
       homeId,
       parseRequest(createRoomSchema, rawBody)
+    );
+  }
+
+  @Get(":homeId/tariff")
+  @ApiOkResponse({ description: "Current estimated electricity tariff" })
+  getTariff(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("homeId", new ParseUUIDPipe({ version: "4" })) homeId: string
+  ) {
+    return this.homes.getTariff(user.id, homeId);
+  }
+
+  @Put(":homeId/tariff")
+  @ApiOkResponse({ description: "Estimated flat electricity tariff saved" })
+  updateTariff(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("homeId", new ParseUUIDPipe({ version: "4" })) homeId: string,
+    @Body() rawBody: unknown
+  ) {
+    return this.homes.updateTariff(
+      user.id,
+      homeId,
+      parseRequest(tariffSchema, rawBody)
     );
   }
 }

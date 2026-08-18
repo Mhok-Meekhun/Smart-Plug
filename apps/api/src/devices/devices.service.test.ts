@@ -74,7 +74,15 @@ describe("DevicesService", () => {
       type: "SIMULATED_SMART_PLUG",
       state: null
     });
-    const prisma = { home: { findFirst }, device: { create } } as unknown as PrismaService;
+    const createMany = vi.fn().mockResolvedValue({ count: 7 });
+    const transaction = {
+      device: { create },
+      energyAggregate: { createMany }
+    };
+    const prisma = {
+      home: { findFirst },
+      $transaction: vi.fn(async (callback: (client: typeof transaction) => unknown) => callback(transaction))
+    } as unknown as PrismaService;
     const service = new DevicesService(prisma);
 
     await service.createSimulatedDevice(
@@ -95,6 +103,9 @@ describe("DevicesService", () => {
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ type: "SIMULATED_SMART_PLUG", lifecycleStatus: "ACTIVE" })
     }));
+    expect(createMany).toHaveBeenCalledWith({ data: expect.arrayContaining([
+      expect.objectContaining({ deviceId: "device-1", bucketSize: "DAY" })
+    ]) });
   });
 
   it("acknowledges simulated relay commands and updates reported state", async () => {

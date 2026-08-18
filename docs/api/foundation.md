@@ -15,6 +15,8 @@ The API trusts Supabase for human authentication and independently enforces home
 - `POST /v1/homes` - create a home with the current user as owner.
 - `GET /v1/homes/:homeId/rooms` - rooms, scoped through membership.
 - `POST /v1/homes/:homeId/rooms` - create a room; owner membership required.
+- `GET /v1/homes/:homeId/tariff` - read the current estimated flat tariff.
+- `PUT /v1/homes/:homeId/tariff` - create or update the estimated flat tariff; owner membership required.
 - `GET /v1/devices` - devices, optionally filtered by `homeId`, `roomId`, or `connectionStatus`.
 - `POST /v1/devices/simulated` - create an explicitly labelled software-only test plug in an owned home and room.
 - `POST /v1/devices/:deviceId/commands/relay` - create a durable relay command. Simulated plugs acknowledge through the software simulator path; physical plugs remain pending until the IoT worker receives a device acknowledgement.
@@ -32,6 +34,11 @@ hardware or the paid IoT worker:
 Simulated devices are permanently marked by type and firmware version. They do
 not represent provisioned ESP32 hardware and must not be presented as physical
 relay confirmation.
+
+New simulated devices receive seven completed days of deterministic daily
+aggregate data so the energy UI can be tested without fake raw telemetry. New
+homes receive a default 4.2 THB/kWh flat estimate that an owner can edit. Cost
+results remain explicitly labelled as estimates.
 
 ## Security boundary
 

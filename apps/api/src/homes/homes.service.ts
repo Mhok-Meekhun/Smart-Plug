@@ -24,12 +24,26 @@ export class HomesService {
     userId: string,
     input: { name: string; timezone: string; currency: string }
   ) {
+    const now = new Date();
+    const effectiveFrom = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate()
+    ));
     return this.prisma.home.create({
       data: {
         name: input.name,
         timezone: input.timezone,
         currency: input.currency,
-        createdBy: userId
+        createdBy: userId,
+        tariffs: {
+          create: {
+            name: "Default estimated flat rate",
+            currency: input.currency,
+            flatRatePerKwh: 4.2,
+            effectiveFrom
+          }
+        }
       },
       select: {
         id: true,
@@ -102,6 +116,94 @@ export class HomesService {
       }
       throw error;
     }
+  }
+
+  async getTariff(userId: string, homeId: string) {
+    const tariff = await this.prisma.electricityTariff.findFirst({
+      where: {
+        homeId,
+        home: { members: { some: { userId } } },
+        effectiveFrom: { lte: new Date() }
+      },
+      select: {
+        id: true,
+        homeId: true,
+        name: true,
+        currency: true,
+        flatRatePerKwh: true,
+        effectiveFrom: true,
+        updatedAt: true
+      },
+      orderBy: { effectiveFrom: "desc" }
+    });
+    return tariff ? this.serializeTariff(tariff) : null;
+  }
+
+  async updateTariff(
+    userId: string,
+    homeId: string,
+    input: { name: string; flatRatePerKwh: number }
+  ) {
+    const home = await this.prisma.home.findFirst({
+      where: {
+        id: homeId,
+        members: { some: { userId, role: "OWNER" } }
+      },
+      select: { id: true, currency: true }
+    });
+    if (!home) {
+      throw new ForbiddenException({
+        code: "HOME_OWNER_REQUIRED",
+        messageKey: "errors.homeOwnerRequired"
+      });
+    }
+
+    const existing = await this.prisma.electricityTariff.findFirst({
+      where: { homeId },
+      select: { id: true },
+      orderBy: { effectiveFrom: "desc" }
+    });
+    const select = {
+      id: true,
+      homeId: true,
+      name: true,
+      currency: true,
+      flatRatePerKwh: true,
+      effectiveFrom: true,
+      updatedAt: true
+    } as const;
+    if (existing) {
+      const tariff = await this.prisma.electricityTariff.update({
+        where: { id: existing.id },
+        data: {
+          name: input.name,
+          flatRatePerKwh: input.flatRatePerKwh
+        },
+        select
+      });
+      return this.serializeTariff(tariff);
+    }
+
+    const now = new Date();
+    const tariff = await this.prisma.electricityTariff.create({
+      data: {
+        homeId,
+        name: input.name,
+        currency: home.currency,
+        flatRatePerKwh: input.flatRatePerKwh,
+        effectiveFrom: new Date(Date.UTC(
+          now.getUTCFullYear(),
+          now.getUTCMonth(),
+          now.getUTCDate()
+        ))
+      },
+      select
+    });
+    return this.serializeTariff(tariff);
+  }
+
+  private serializeTariff<T extends { flatRatePerKwh: { toNumber(): number } }>(tariff: T) {
+    return { ...tariff, flatRatePerKwh: tariff.flatRatePerKwh.toNumber() };
   }
 
   private isUniqueConstraintError(error: unknown): boolean {

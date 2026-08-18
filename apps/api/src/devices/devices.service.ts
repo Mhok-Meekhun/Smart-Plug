@@ -82,40 +82,46 @@ export class DevicesService {
     }
 
     const now = new Date();
-    const device = await this.prisma.device.create({
-      data: {
-        hardwareId: `sim:${randomUUID()}`,
-        homeId: input.homeId,
-        roomId: input.roomId,
-        name: input.name,
-        type: "SIMULATED_SMART_PLUG",
-        icon: input.icon ?? "plug",
-        firmwareVersion: "simulator-1.0.0",
-        lifecycleStatus: "ACTIVE",
-        state: {
-          create: {
-            connectionStatus: "ONLINE",
-            relayState: false,
-            voltageV: 230,
-            currentA: 0,
-            powerW: 0,
-            energyKwh: 0,
-            sequence: 0,
-            lastSeenAt: now
+    const device = await this.prisma.$transaction(async (transaction) => {
+      const created = await transaction.device.create({
+        data: {
+          hardwareId: `sim:${randomUUID()}`,
+          homeId: input.homeId,
+          roomId: input.roomId,
+          name: input.name,
+          type: "SIMULATED_SMART_PLUG",
+          icon: input.icon ?? "plug",
+          firmwareVersion: "simulator-1.0.0",
+          lifecycleStatus: "ACTIVE",
+          state: {
+            create: {
+              connectionStatus: "ONLINE",
+              relayState: false,
+              voltageV: 230,
+              currentA: 0,
+              powerW: 0,
+              energyKwh: 0,
+              sequence: 0,
+              lastSeenAt: now
+            }
           }
+        },
+        select: {
+          id: true,
+          homeId: true,
+          roomId: true,
+          name: true,
+          type: true,
+          icon: true,
+          firmwareVersion: true,
+          lifecycleStatus: true,
+          state: true
         }
-      },
-      select: {
-        id: true,
-        homeId: true,
-        roomId: true,
-        name: true,
-        type: true,
-        icon: true,
-        firmwareVersion: true,
-        lifecycleStatus: true,
-        state: true
-      }
+      });
+      await transaction.energyAggregate.createMany({
+        data: this.simulatedDailyAggregates(created.id, now)
+      });
+      return created;
     });
 
     return {
@@ -241,5 +247,21 @@ export class DevicesService {
 
   private decimalToNumber(value: { toNumber(): number } | null): number | null {
     return value?.toNumber() ?? null;
+  }
+
+  private simulatedDailyAggregates(deviceId: string, now: Date) {
+    const pattern = [0.82, 1.04, 0.76, 1.18, 1.31, 0.94, 1.12];
+    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    return pattern.map((energyKwh, index) => ({
+      deviceId,
+      bucketSize: "DAY" as const,
+      bucketStart: new Date(today - (pattern.length - index) * 86_400_000),
+      sampleCount: 288,
+      energyKwh,
+      averagePowerW: Math.round((energyKwh * 1000) / 24),
+      peakPowerW: 65,
+      minimumVoltageV: 226.4,
+      maximumVoltageV: 233.2
+    }));
   }
 }

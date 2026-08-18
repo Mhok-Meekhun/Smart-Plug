@@ -85,4 +85,30 @@ describe("HomesService", () => {
       data: expect.objectContaining({ name: "Living room" })
     }));
   });
+
+  it("updates the latest tariff only after owner validation", async () => {
+    const findHome = vi.fn().mockResolvedValue({ id: "home-1", currency: "THB" });
+    const findTariff = vi.fn().mockResolvedValue({ id: "tariff-1" });
+    const update = vi.fn().mockResolvedValue({ id: "tariff-1", flatRatePerKwh: { toNumber: () => 4.5 } });
+    const prisma = {
+      home: { findFirst: findHome },
+      electricityTariff: { findFirst: findTariff, update }
+    } as unknown as PrismaService;
+    const service = new HomesService(prisma);
+
+    await service.updateTariff(
+      "3f683723-da0e-42cd-8407-4b3f524f5af3",
+      "da659e0e-11fd-48f6-9cf2-e3698d00eec2",
+      { name: "My estimate", flatRatePerKwh: 4.5 }
+    );
+
+    expect(findHome).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        members: { some: { userId: "3f683723-da0e-42cd-8407-4b3f524f5af3", role: "OWNER" } }
+      })
+    }));
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { name: "My estimate", flatRatePerKwh: 4.5 }
+    }));
+  });
 });
