@@ -2,14 +2,18 @@
 
 import { Power } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { createClient } from "../lib/supabase/client";
 
-export function PowerToggle({ deviceId, initialState, demo }: { deviceId: string; initialState: boolean; demo: boolean }) {
+export function PowerToggle({ deviceId, initialState, demo, onConfirmed }: { deviceId: string; initialState: boolean; demo: boolean; onConfirmed?: (relayState: boolean) => void }) {
   const t = useTranslations("Device");
   const [relayState, setRelayState] = useState(initialState);
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setRelayState(initialState);
+  }, [initialState]);
 
   function toggle() {
     setError(undefined);
@@ -18,6 +22,7 @@ export function PowerToggle({ deviceId, initialState, demo }: { deviceId: string
       if (demo) {
         await new Promise((resolve) => setTimeout(resolve, 450));
         setRelayState(desired);
+        onConfirmed?.(desired);
         return;
       }
       try {
@@ -36,6 +41,7 @@ export function PowerToggle({ deviceId, initialState, demo }: { deviceId: string
         };
         if (command.confirmed && command.desiredRelayState === desired) {
           setRelayState(desired);
+          onConfirmed?.(desired);
         }
       } catch {
         setError(t("failed"));

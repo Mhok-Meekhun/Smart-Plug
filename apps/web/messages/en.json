@@ -6,7 +6,8 @@
     "subtitle":"See what is on, control smart plugs, and understand today’s electricity use.",
     "livePower":"Live power","todayEnergy":"Energy today","estimatedCost":"Estimated cost","online":"Online",
     "devices":"My devices","viewAll":"View all","todayUsage":"Today’s usage","weeklyAverage":"7-day average",
-    "nextSchedule":"Next schedule","at":"at","updated":"Updated just now","demo":"Simulator data","empty":"No smart plugs yet. Add your first device to begin monitoring energy."
+    "nextSchedule":"Next schedule","at":"at","updated":"Updated just now","updatedAt":"Updated {value}","demo":"Simulator data","empty":"No smart plugs yet. Add your first device to begin monitoring energy.",
+    "loading":"Loading your smart home…","loadFailed":"Could not load the dashboard.","refreshFailed":"Live data could not be refreshed.","retry":"Try again","addDevice":"Add device","lastSevenDays":"Last 7 days","topConsumer":"Top consumer","noEnergy":"No energy aggregates are available yet.","noSchedule":"No enabled schedule"
   },
   "Device": {"on":"On","off":"Off","online":"Online","offline":"Offline","pending":"Changing…","failed":"Could not change device state"},
   "Auth": {"login":"Sign in","register":"Create account","email":"Email","password":"Password","name":"Display name","noAccount":"New here?","hasAccount":"Already registered?","submitLogin":"Sign in","submitRegister":"Create account","checkEmail":"Check your email to confirm your account.","error":"Authentication failed. Please check your details."},
