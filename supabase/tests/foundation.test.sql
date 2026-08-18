@@ -1,6 +1,6 @@
 begin;
 
-select plan(21);
+select plan(23);
 
 select has_table('public', 'profiles', 'profiles table exists');
 select has_table('public', 'homes', 'homes table exists');
@@ -54,6 +54,24 @@ select ok(
       and policyname = 'home_members_receive_broadcasts'
   ),
   'private broadcast membership policy exists'
+);
+select ok(
+  (
+    select is_nullable = 'NO'
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'device_schedules'
+      and column_name = 'weekdays'
+  ),
+  'schedule weekdays use a non-null array representation'
+);
+select ok(
+  exists(
+    select 1 from pg_constraint
+    where conrelid = 'public.device_schedules'::regclass
+      and conname = 'device_schedules_kind_fields_check'
+  ),
+  'schedule kind fields constraint exists'
 );
 
 select * from finish();
