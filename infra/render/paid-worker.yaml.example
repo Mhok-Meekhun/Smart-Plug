@@ -9,7 +9,7 @@ services:
     plan: starter
     autoDeployTrigger: checksPass
     maxShutdownDelaySeconds: 30
-    buildCommand: corepack enable && corepack prepare pnpm@10.15.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @smart-home/iot-worker build
+    buildCommand: corepack enable && corepack prepare pnpm@10.15.1 --activate && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@smart-home/iot-worker...
     startCommand: pnpm --filter @smart-home/iot-worker start
     envVars:
       - key: NODE_VERSION

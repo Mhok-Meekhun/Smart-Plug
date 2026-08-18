@@ -5,7 +5,7 @@ services:
     region: singapore
     plan: free
     autoDeployTrigger: checksPass
-    buildCommand: corepack enable && corepack prepare pnpm@10.15.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @smart-home/web build
+    buildCommand: corepack enable && corepack prepare pnpm@10.15.1 --activate && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@smart-home/web...
     startCommand: pnpm --filter @smart-home/web start
     healthCheckPath: /th/auth/login
     envVars:
@@ -28,7 +28,7 @@ services:
     region: singapore
     plan: free
     autoDeployTrigger: checksPass
-    buildCommand: corepack enable && corepack prepare pnpm@10.15.1 --activate && pnpm install --frozen-lockfile && pnpm --filter @smart-home/api build
+    buildCommand: corepack enable && corepack prepare pnpm@10.15.1 --activate && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@smart-home/api...
     startCommand: pnpm --filter @smart-home/api start
     healthCheckPath: /health
     envVars:
