@@ -1,10 +1,11 @@
 "use client";
 
-import { CircleDollarSign, Languages, UserRound } from "lucide-react";
+import { CircleDollarSign, House, Languages, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Link, usePathname } from "../i18n/navigation";
 
 const items = [
+  { href: "/home/rooms", key: "home", icon: House },
   { href: "/settings/profile", key: "profile", icon: UserRound },
   { href: "/settings/language", key: "language", icon: Languages },
   { href: "/settings/electricity", key: "electricity", icon: CircleDollarSign }
