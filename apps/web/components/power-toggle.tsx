@@ -30,6 +30,13 @@ export function PowerToggle({ deviceId, initialState, demo }: { deviceId: string
           body: JSON.stringify({ relayState: desired })
         });
         if (!response.ok) throw new Error("Command rejected");
+        const command = await response.json() as {
+          confirmed?: boolean;
+          desiredRelayState?: boolean;
+        };
+        if (command.confirmed && command.desiredRelayState === desired) {
+          setRelayState(desired);
+        }
       } catch {
         setError(t("failed"));
       }

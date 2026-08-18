@@ -44,7 +44,7 @@ describe("DevicesService", () => {
       deviceCommandOutbox: { create: vi.fn().mockResolvedValue({}) }
     };
     const prisma = {
-      device: { findFirst: vi.fn().mockResolvedValue({ id: created.deviceId }) },
+      device: { findFirst: vi.fn().mockResolvedValue({ id: created.deviceId, type: "SMART_PLUG" }) },
       deviceCommand: { findUnique: vi.fn().mockResolvedValue(null) },
       $transaction: vi.fn(async (callback: (client: typeof transaction) => unknown) => callback(transaction))
     } as unknown as PrismaService;
@@ -65,5 +65,69 @@ describe("DevicesService", () => {
     expect(transaction.deviceCommandOutbox.create).toHaveBeenCalledWith({
       data: { commandId: created.id }
     });
+  });
+
+  it("creates an explicit simulated device only inside an owned home and room", async () => {
+    const findFirst = vi.fn().mockResolvedValue({ id: "home-1" });
+    const create = vi.fn().mockResolvedValue({
+      id: "device-1",
+      type: "SIMULATED_SMART_PLUG",
+      state: null
+    });
+    const prisma = { home: { findFirst }, device: { create } } as unknown as PrismaService;
+    const service = new DevicesService(prisma);
+
+    await service.createSimulatedDevice(
+      "3f683723-da0e-42cd-8407-4b3f524f5af3",
+      {
+        homeId: "da659e0e-11fd-48f6-9cf2-e3698d00eec2",
+        roomId: "76ed781f-d183-4d61-8442-b022f7cd88bd",
+        name: "Test plug"
+      }
+    );
+
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        members: { some: { userId: "3f683723-da0e-42cd-8407-4b3f524f5af3", role: "OWNER" } },
+        rooms: { some: { id: "76ed781f-d183-4d61-8442-b022f7cd88bd" } }
+      })
+    }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ type: "SIMULATED_SMART_PLUG", lifecycleStatus: "ACTIVE" })
+    }));
+  });
+
+  it("acknowledges simulated relay commands and updates reported state", async () => {
+    const requestedAt = new Date("2026-08-18T10:00:00Z");
+    const created = {
+      id: "fddbf22a-4d82-43ab-b270-97923c77ad22",
+      deviceId: "0af11e45-676d-4ac2-8d45-867ddb0e0e90",
+      desiredRelayState: true,
+      status: "ACKNOWLEDGED",
+      requestedAt,
+      expiresAt: new Date(requestedAt.getTime() + 30_000)
+    };
+    const transaction = {
+      deviceCommand: { create: vi.fn().mockResolvedValue(created) },
+      deviceState: { update: vi.fn().mockResolvedValue({}) }
+    };
+    const prisma = {
+      device: { findFirst: vi.fn().mockResolvedValue({ id: created.deviceId, type: "SIMULATED_SMART_PLUG" }) },
+      deviceCommand: { findUnique: vi.fn().mockResolvedValue(null) },
+      $transaction: vi.fn(async (callback: (client: typeof transaction) => unknown) => callback(transaction))
+    } as unknown as PrismaService;
+    const service = new DevicesService(prisma);
+
+    const result = await service.requestRelayState(
+      "3f683723-da0e-42cd-8407-4b3f524f5af3",
+      created.deviceId,
+      true,
+      "request-simulator-1"
+    );
+
+    expect(result).toMatchObject({ status: "ACKNOWLEDGED", confirmed: true });
+    expect(transaction.deviceState.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ relayState: true, powerW: 65 })
+    }));
   });
 });

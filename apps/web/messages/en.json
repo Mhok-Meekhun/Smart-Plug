@@ -10,5 +10,14 @@
   },
   "Device": {"on":"On","off":"Off","online":"Online","offline":"Offline","pending":"Changing…","failed":"Could not change device state"},
   "Auth": {"login":"Sign in","register":"Create account","email":"Email","password":"Password","name":"Display name","noAccount":"New here?","hasAccount":"Already registered?","submitLogin":"Sign in","submitRegister":"Create account","checkEmail":"Check your email to confirm your account.","error":"Authentication failed. Please check your details."},
+  "Onboarding": {
+    "eyebrow":"SAFE SIMULATED SETUP","title":"Set up your first smart home","subtitle":"Create a home and room, then add a clearly labelled simulated smart plug. No paid IoT service or physical wiring is required.",
+    "progress":"Setup progress","homeStep":"Create home","roomStep":"Create room","deviceStep":"Add test plug","step":"Step {number}","loading":"Loading your home…","loadFailed":"Could not load your home. Check the API connection and try again.","saveFailed":"Could not save this step. Please review the information and retry.",
+    "simulationNote":"This flow creates software-only test data. It does not provision Wi-Fi, connect hardware, or switch a mains appliance.",
+    "createHome":"Home details","selectHome":"Selected home","homeNamePlaceholder":"For example, Bangkok home","addHome":"Add home","homeCreated":"Home created. Now add a room.",
+    "createRoom":"Room details","roomNamePlaceholder":"For example, Living room","addRoom":"Add room","roomCreated":"Room created. You can now add a simulated plug.",
+    "addSimulator":"Simulated smart plug","simulatorDescription":"The simulator reports a safe virtual 230 V state and confirms test ON/OFF commands through the API.","deviceNamePlaceholder":"For example, TV test plug","createSimulator":"Create test plug"
+  },
+  "Devices": {"eyebrow":"CONNECTED APPLIANCES","title":"Your smart plugs","subtitle":"See connectivity, confirmed relay state, and current electrical values.","add":"Add device","loading":"Loading devices…","loadFailed":"Could not load devices from the API.","retry":"Try again","emptyTitle":"No devices yet","emptyBody":"Complete the guided setup to create a home, room, and safe simulated smart plug.","emptyAction":"Start setup","simulated":"SIMULATED","noRoom":"No room","voltage":"Voltage","current":"Current","energy":"Energy","simulatorReady":"Software simulator ready for confirmed test commands","waitingForDevice":"Waiting for physical device telemetry"},
   "Pages": {"devicesTitle":"Devices","devicesBody":"Manage smart plugs, rooms, and connectivity.","energyTitle":"Energy","energyBody":"Explore consumption, trends, and estimated electricity cost.","schedulesTitle":"Schedules","schedulesBody":"Create reliable one-time and repeating relay schedules.","settingsTitle":"Settings","settingsBody":"Manage language, profile, timezone, and electricity tariff.","coming":"This workspace is ready for the next connected feature."}
 }

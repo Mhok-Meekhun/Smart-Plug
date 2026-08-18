@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Headers, Param, Post, Query } from "@nestjs/common";
-import { ApiAcceptedResponse, ApiBearerAuth, ApiOkResponse, ApiTags } from "@nestjs/swagger";
+import { ApiAcceptedResponse, ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from "@nestjs/swagger";
 import { z } from "zod";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { CurrentUser } from "../auth/current-user.decorator.js";
@@ -17,6 +17,12 @@ const deviceListQuerySchema = z
   .strict();
 
 const relayCommandBodySchema = z.object({ relayState: z.boolean() }).strict();
+const simulatedDeviceBodySchema = z.object({
+  homeId: z.string().uuid(),
+  roomId: z.string().uuid(),
+  name: z.string().trim().min(1).max(120),
+  icon: z.string().trim().min(1).max(60).optional()
+}).strict();
 const deviceIdSchema = z.string().uuid();
 const idempotencyKeySchema = z.string().min(8).max(120);
 
@@ -34,6 +40,18 @@ export class DevicesController {
   ) {
     const query = parseRequest(deviceListQuerySchema, rawQuery);
     return this.devices.listForUser(user.id, query);
+  }
+
+  @Post("simulated")
+  @ApiCreatedResponse({ description: "Simulated smart plug created for UI and API testing" })
+  createSimulated(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() rawBody: unknown
+  ) {
+    return this.devices.createSimulatedDevice(
+      user.id,
+      parseRequest(simulatedDeviceBodySchema, rawBody)
+    );
   }
 
   @Post(":deviceId/commands/relay")

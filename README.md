@@ -7,6 +7,11 @@ Supabase Auth and tenant-aware RLS, a NestJS API, durable MQTT commands,
 telemetry and energy aggregates, schedules, a long-running IoT worker, and a
 networked virtual smart plug.
 
+The free hosted slice includes authenticated home and room creation plus an
+explicit software-only smart-plug simulator, allowing the complete onboarding
+and confirmed test-control flow to be exercised before enabling paid IoT
+infrastructure.
+
 ## Workspace
 
 - `packages/contracts` - MQTT topics and Zod payload contracts.

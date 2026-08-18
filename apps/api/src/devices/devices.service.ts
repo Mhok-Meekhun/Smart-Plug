@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import type { DeviceConnectionStatus } from "../generated/prisma/enums.js";
 import { PrismaService } from "../database/prisma.service.js";
 
@@ -61,6 +62,77 @@ export class DevicesService {
     }));
   }
 
+  async createSimulatedDevice(
+    userId: string,
+    input: { homeId: string; roomId: string; name: string; icon?: string | undefined }
+  ) {
+    const authorizedHome = await this.prisma.home.findFirst({
+      where: {
+        id: input.homeId,
+        members: { some: { userId, role: "OWNER" } },
+        rooms: { some: { id: input.roomId } }
+      },
+      select: { id: true }
+    });
+    if (!authorizedHome) {
+      throw new NotFoundException({
+        code: "HOME_OR_ROOM_NOT_FOUND",
+        messageKey: "errors.homeOrRoomNotFound"
+      });
+    }
+
+    const now = new Date();
+    const device = await this.prisma.device.create({
+      data: {
+        hardwareId: `sim:${randomUUID()}`,
+        homeId: input.homeId,
+        roomId: input.roomId,
+        name: input.name,
+        type: "SIMULATED_SMART_PLUG",
+        icon: input.icon ?? "plug",
+        firmwareVersion: "simulator-1.0.0",
+        lifecycleStatus: "ACTIVE",
+        state: {
+          create: {
+            connectionStatus: "ONLINE",
+            relayState: false,
+            voltageV: 230,
+            currentA: 0,
+            powerW: 0,
+            energyKwh: 0,
+            sequence: 0,
+            lastSeenAt: now
+          }
+        }
+      },
+      select: {
+        id: true,
+        homeId: true,
+        roomId: true,
+        name: true,
+        type: true,
+        icon: true,
+        firmwareVersion: true,
+        lifecycleStatus: true,
+        state: true
+      }
+    });
+
+    return {
+      ...device,
+      state: device.state
+        ? {
+            ...device.state,
+            voltageV: this.decimalToNumber(device.state.voltageV),
+            currentA: this.decimalToNumber(device.state.currentA),
+            powerW: this.decimalToNumber(device.state.powerW),
+            energyKwh: this.decimalToNumber(device.state.energyKwh),
+            sequence: device.state.sequence?.toString() ?? null
+          }
+        : null
+    };
+  }
+
   async requestRelayState(
     userId: string,
     deviceId: string,
@@ -72,7 +144,7 @@ export class DevicesService {
         id: deviceId,
         home: { members: { some: { userId } } }
       },
-      select: { id: true }
+      select: { id: true, type: true }
     });
     if (!device) {
       throw new NotFoundException({
@@ -96,6 +168,38 @@ export class DevicesService {
 
     const requestedAt = new Date();
     const expiresAt = new Date(requestedAt.getTime() + 30_000);
+    if (device.type === "SIMULATED_SMART_PLUG") {
+      const command = await this.prisma.$transaction(async (transaction) => {
+        const created = await transaction.deviceCommand.create({
+          data: {
+            deviceId,
+            requestedBy: userId,
+            desiredRelayState,
+            idempotencyKey,
+            status: "ACKNOWLEDGED",
+            requestedAt,
+            sentAt: requestedAt,
+            acknowledgedAt: requestedAt,
+            expiresAt,
+            attemptCount: 1,
+            acknowledgementPayload: { simulator: true }
+          }
+        });
+        await transaction.deviceState.update({
+          where: { deviceId },
+          data: {
+            relayState: desiredRelayState,
+            currentA: desiredRelayState ? 0.28 : 0,
+            powerW: desiredRelayState ? 65 : 0,
+            lastSeenAt: requestedAt,
+            sequence: { increment: 1 }
+          }
+        });
+        return created;
+      });
+      return this.commandResponse(command);
+    }
+
     const command = await this.prisma.$transaction(async (transaction) => {
       const created = await transaction.deviceCommand.create({
         data: {
