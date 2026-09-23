@@ -45,3 +45,17 @@ export function buildAuthCallbackUrl(
       : `/${locale}/auth/callback`;
   return new URL(path, origin).toString();
 }
+
+export function resolvePublicAuthOrigin(
+  requestUrl: string,
+  externalUrl?: string,
+): string {
+  const source = externalUrl?.trim() || requestUrl;
+  const url = new URL(source);
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Authentication redirects require an HTTP(S) origin");
+  }
+
+  return url.origin;
+}

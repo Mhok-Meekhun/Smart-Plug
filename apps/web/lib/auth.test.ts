@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   authErrorMessageKey,
   buildAuthCallbackUrl,
+  resolvePublicAuthOrigin,
 } from "./auth";
 
 describe("authentication helpers", () => {
@@ -34,5 +35,20 @@ describe("authentication helpers", () => {
         "confirmation",
       ),
     ).toBe("https://smart-home.example/th/auth/callback");
+  });
+
+  it("prefers Render's external URL over its internal request origin", () => {
+    expect(
+      resolvePublicAuthOrigin(
+        "http://localhost:10000/en/auth/recovery-callback",
+        "https://smart-home-web.onrender.com",
+      ),
+    ).toBe("https://smart-home-web.onrender.com");
+  });
+
+  it("uses the request origin outside Render", () => {
+    expect(
+      resolvePublicAuthOrigin("http://localhost:3000/th/auth/callback"),
+    ).toBe("http://localhost:3000");
   });
 });
