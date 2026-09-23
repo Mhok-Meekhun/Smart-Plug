@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useState, useTransition } from "react";
 import { Link, useRouter } from "../i18n/navigation";
 import { apiRequest } from "../lib/api-client";
+import { authErrorMessageKey, buildAuthCallbackUrl } from "../lib/auth";
 import { createClient } from "../lib/supabase/client";
 import { LanguageSwitcher } from "./language-switcher";
 
@@ -33,7 +34,18 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           router.replace("/dashboard"); router.refresh();
         } else {
           const displayName = String(formData.get("displayName") ?? "");
-          const { data, error: authError } = await supabase.auth.signUp({ email, password, options: { data: { display_name: displayName }, emailRedirectTo: `${window.location.origin}/${locale}/dashboard` } });
+          const { data, error: authError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: { display_name: displayName },
+              emailRedirectTo: buildAuthCallbackUrl(
+                window.location.origin,
+                locale,
+                "confirmation",
+              ),
+            },
+          });
           if (authError) throw authError;
           if (data.session) {
             await apiRequest("/v1/me", {
@@ -43,7 +55,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             router.replace("/dashboard"); router.refresh();
           } else setNotice(t("checkEmail"));
         }
-      } catch { setError(t("error")); }
+      } catch (caught) {
+        setError(t(authErrorMessageKey(caught)));
+      }
     });
   }
 
@@ -63,6 +77,13 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             {mode === "register" ? <label className="block"><span className="mb-2 block text-sm font-bold">{t("name")}</span><span className="flex items-center gap-3 rounded-2xl border border-[#dce5dd] bg-white px-4"><UserRound size={18} className="text-[#7a857d]"/><input required name="displayName" autoComplete="name" className="h-13 min-w-0 flex-1 outline-none" /></span></label> : null}
             <label className="block"><span className="mb-2 block text-sm font-bold">{t("email")}</span><span className="flex items-center gap-3 rounded-2xl border border-[#dce5dd] bg-white px-4"><Mail size={18} className="text-[#7a857d]"/><input required type="email" name="email" autoComplete="email" className="h-13 min-w-0 flex-1 outline-none" /></span></label>
             <label className="block"><span className="mb-2 block text-sm font-bold">{t("password")}</span><span className="flex items-center gap-3 rounded-2xl border border-[#dce5dd] bg-white px-4"><LockKeyhole size={18} className="text-[#7a857d]"/><input required minLength={8} type="password" name="password" autoComplete={mode === "login" ? "current-password" : "new-password"} className="h-13 min-w-0 flex-1 outline-none" /></span></label>
+            {mode === "login" ? (
+              <div className="text-right">
+                <Link className="text-sm font-bold text-[#1c8b3d] underline-offset-4 hover:underline" href="/auth/forgot-password">
+                  {t("forgotPassword")}
+                </Link>
+              </div>
+            ) : null}
             {error ? <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
             {notice ? <p role="status" className="rounded-xl bg-green-50 p-3 text-sm text-green-800">{notice}</p> : null}
             <button disabled={pending} className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#209842] font-bold text-white shadow-lg shadow-green-900/15 transition hover:bg-[#167b34] disabled:opacity-60">{pending ? <LoaderCircle className="animate-spin" size={19}/> : null}{t(mode === "login" ? "submitLogin" : "submitRegister")}<ArrowRight size={18}/></button>
