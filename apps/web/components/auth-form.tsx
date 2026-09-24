@@ -62,13 +62,13 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   }
 
   return (
-    <main className="grid min-h-screen lg:grid-cols-[1.05fr_.95fr]">
-      <section className="relative hidden overflow-hidden bg-[#123d25] p-12 text-white lg:flex lg:flex-col">
+    <main className="auth-layout grid min-h-screen lg:grid-cols-[1.05fr_.95fr]">
+      <section className="auth-hero relative hidden overflow-hidden p-12 text-white lg:flex lg:flex-col">
         <div className="absolute -left-24 top-36 size-96 rounded-full border-[70px] border-white/5" />
         <div className="relative flex items-center gap-3 text-xl font-black"><span className="grid size-11 place-items-center rounded-2xl bg-[#29a84b]"><Zap size={22} fill="currentColor"/></span>{locale === "th" ? "บ้านประหยัด" : "Baan Prayat"}</div>
         <div className="relative my-auto max-w-xl"><p className="text-xs font-bold tracking-[.2em] text-[#8be0a2]">SMART ENERGY, CLEARLY</p><h1 className="mt-5 text-5xl font-black leading-[1.08] tracking-[-.05em]">{locale === "th" ? "จัดการพลังงานในบ้าน อย่างมั่นใจทุกเวลา" : "Home energy control you can trust."}</h1><p className="mt-6 max-w-lg text-lg leading-8 text-white/65">{locale === "th" ? "ดูการใช้ไฟฟ้าแบบสด ควบคุมอุปกรณ์ และลดค่าใช้จ่ายจากทุกหน้าจอ" : "Monitor live electricity use, control appliances, and reduce costs from any screen."}</p></div>
       </section>
-      <section className="flex items-center justify-center px-5 py-10 md:px-10">
+      <section className="auth-content flex items-center justify-center px-5 py-10 md:px-10">
         <div className="w-full max-w-md">
           <div className="mb-8 flex items-center justify-between lg:justify-end"><div className="flex items-center gap-2 font-black lg:hidden"><span className="grid size-9 place-items-center rounded-xl bg-[#249c45] text-white"><Zap size={18} fill="currentColor"/></span>{locale === "th" ? "บ้านประหยัด" : "Baan Prayat"}</div><LanguageSwitcher /></div>
           <p className="text-xs font-bold tracking-[.16em] text-[#218f41]">{mode === "login" ? "WELCOME BACK" : "GET STARTED"}</p>

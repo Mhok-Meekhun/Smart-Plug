@@ -275,7 +275,7 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
     );
 
   return (
-    <main className="mx-auto max-w-[92rem] px-5 py-7 md:px-8 lg:px-10 lg:py-10">
+    <main className="dashboard-main mx-auto max-w-[92rem] px-5 py-7 md:px-8 lg:px-10 lg:py-10">
       {error ? (
         <div
           role="alert"
@@ -287,7 +287,7 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
           </button>
         </div>
       ) : null}
-      <section className="relative overflow-hidden rounded-[2rem] bg-[#123d25] px-6 py-8 text-white shadow-[0_22px_60px_rgba(15,69,35,.18)] md:px-10 md:py-10">
+      <section className="reference-hero dashboard-hero px-6 py-8 text-white md:px-10 md:py-10">
         <div
           className="absolute -right-20 -top-28 size-80 rounded-full border-[58px] border-white/5"
           aria-hidden="true"
@@ -312,7 +312,7 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-3xl border border-white/10 bg-white/10 p-5">
+            <div className="glass-stat p-5">
               <div className="flex items-center gap-2 text-xs text-white/65">
                 <Zap size={16} />
                 {t("livePower")}
@@ -322,7 +322,7 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
                 <span className="text-base font-semibold text-white/60">W</span>
               </div>
             </div>
-            <div className="rounded-3xl border border-white/10 bg-white/10 p-5">
+            <div className="glass-stat p-5">
               <div className="flex items-center gap-2 text-xs text-white/65">
                 <Wifi size={16} />
                 {t("online")}
@@ -338,7 +338,7 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
         </div>
       </section>
 
-      <section className="mt-6 grid gap-4 sm:grid-cols-3">
+      <section className="dashboard-metrics stagger-in mt-6 grid gap-4 sm:grid-cols-3">
         {[
           {
             label: t("livePower"),
@@ -384,7 +384,7 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
         ))}
       </section>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.18fr_.82fr]">
+      <div className="dashboard-content stagger-in mt-6 grid gap-6 xl:grid-cols-[1.18fr_.82fr]">
         <section className="panel p-5 md:p-7">
           <div className="flex items-center justify-between">
             <div>
@@ -401,7 +401,7 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
               {t("viewAll")}
             </Link>
           </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="stagger-in mt-5 grid gap-3 sm:grid-cols-2">
             {devices.length === 0 ? (
               <div className="col-span-full rounded-3xl border border-dashed border-[#bdd7c2] bg-[#f1f8f2] p-8 text-center">
                 <p className="text-sm font-semibold text-[#477552]">
@@ -420,9 +420,9 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
                 return (
                   <article
                     key={device.id}
-                    className="flex min-h-32 items-center gap-4 rounded-[1.25rem] border border-[#e4ebe5] bg-white p-4"
+                    className="device-card flex min-h-32 items-center gap-4 p-4"
                   >
-                    <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
+                    <span className={`device-icon ${online ? "" : "is-off"}`}>
                       <PlugZap size={23} />
                     </span>
                     <div className="min-w-0 flex-1">
@@ -436,9 +436,7 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
                         {device.room?.name ?? "—"}
                       </p>
                       <div className="mt-3 flex items-center gap-2">
-                        <span
-                          className={`size-2 rounded-full ${online ? "bg-[#27a64a]" : "bg-[#aab2ac]"}`}
-                        />
+                        <span className={`status-dot ${online ? "is-online" : ""}`} />
                         <span
                           className={`text-xs font-semibold ${online ? "text-[#258b41]" : "text-[#89928b]"}`}
                         >

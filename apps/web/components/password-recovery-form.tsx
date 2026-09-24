@@ -119,8 +119,8 @@ export function PasswordRecoveryForm({
   }
 
   return (
-    <main className="grid min-h-screen lg:grid-cols-[1.05fr_.95fr]">
-      <section className="relative hidden overflow-hidden bg-[#123d25] p-12 text-white lg:flex lg:flex-col">
+    <main className="auth-layout grid min-h-screen lg:grid-cols-[1.05fr_.95fr]">
+      <section className="auth-hero relative hidden overflow-hidden p-12 text-white lg:flex lg:flex-col">
         <div className="absolute -left-24 top-36 size-96 rounded-full border-[70px] border-white/5" />
         <div className="relative flex items-center gap-3 text-xl font-black">
           <span className="grid size-11 place-items-center rounded-2xl bg-[#29a84b]">
@@ -141,7 +141,7 @@ export function PasswordRecoveryForm({
         </div>
       </section>
 
-      <section className="flex items-center justify-center px-5 py-10 md:px-10">
+      <section className="auth-content flex items-center justify-center px-5 py-10 md:px-10">
         <div className="w-full max-w-md">
           <div className="mb-8 flex items-center justify-between lg:justify-end">
             <div className="flex items-center gap-2 font-black lg:hidden">

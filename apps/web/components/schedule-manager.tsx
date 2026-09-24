@@ -211,7 +211,7 @@ export function ScheduleManager() {
     );
 
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[.9fr_1.1fr]">
+    <div className="stagger-in grid items-start gap-6 lg:grid-cols-[.9fr_1.1fr]">
       <section className="panel p-5 md:p-7">
         <div className="flex items-center gap-3">
           <span className="grid size-11 place-items-center rounded-2xl bg-[#eaf7ed] text-[#1e8e3e]">
@@ -389,7 +389,7 @@ export function ScheduleManager() {
             return (
               <article
                 key={schedule.id}
-                className={`panel p-5 transition ${schedule.enabled ? "" : "opacity-70"}`}
+                className={`device-card p-5 transition ${schedule.enabled ? "" : "opacity-70"}`}
               >
                 <div className="flex items-start gap-4">
                   <span

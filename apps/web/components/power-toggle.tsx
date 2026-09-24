@@ -1,6 +1,6 @@
 "use client";
 
-import { Power } from "lucide-react";
+import { LoaderCircle, Power } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "../lib/supabase/client";
@@ -10,11 +10,13 @@ export function PowerToggle({
   initialState,
   demo,
   onConfirmed,
+  appearance = "switch",
 }: {
   deviceId: string;
   initialState: boolean;
   demo: boolean;
   onConfirmed?: (relayState: boolean) => void;
+  appearance?: "switch" | "hero";
 }) {
   const t = useTranslations("Device");
   const [relayState, setRelayState] = useState(initialState);
@@ -67,16 +69,26 @@ export function PowerToggle({
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className={`flex flex-col items-end gap-1 ${appearance === "hero" ? "power-toggle--hero" : ""}`}>
       <button
         type="button"
         onClick={toggle}
         disabled={pending}
-        aria-pressed={relayState}
+        role={appearance === "switch" ? "switch" : undefined}
+        aria-checked={appearance === "switch" ? relayState : undefined}
+        aria-pressed={appearance === "hero" ? relayState : undefined}
         aria-label={`${relayState ? t("on") : t("off")}: ${pending ? t("pending") : ""}`}
-        className={`grid size-11 place-items-center rounded-full transition ${relayState ? "bg-[#25a548] text-white shadow-lg shadow-green-800/20" : "bg-[#edf1ed] text-[#879188]"} disabled:opacity-60`}
+        className={appearance === "hero"
+          ? `grid size-20 place-items-center rounded-full bg-white text-[#249b47] shadow-[0_0_0_8px_rgba(255,255,255,.07),0_16px_35px_rgba(0,0,0,.24)] transition hover:scale-105 disabled:opacity-60 ${relayState ? "" : "text-[#7c8f84]"}`
+          : `relative h-8 w-13 rounded-full transition-colors duration-300 ${relayState ? "bg-[#259d48]" : "bg-[#dce3de]"} disabled:opacity-60`}
       >
-        <Power size={21} aria-hidden="true" />
+        {appearance === "hero" ? (
+          pending ? <LoaderCircle size={31} className="animate-spin" aria-hidden="true" /> : <Power size={32} aria-hidden="true" />
+        ) : (
+          <span className={`absolute top-1 grid size-6 place-items-center rounded-full bg-white shadow-sm transition-[left] duration-300 ${relayState ? "left-6" : "left-1"}`}>
+            {pending ? <LoaderCircle size={13} className="animate-spin text-[#249b47]" aria-hidden="true" /> : null}
+          </span>
+        )}
       </button>
       <span
         className={`text-[.68rem] font-bold ${relayState ? "text-[#18813a]" : "text-[#7a847c]"}`}

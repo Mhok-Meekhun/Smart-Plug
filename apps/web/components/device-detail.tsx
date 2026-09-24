@@ -225,8 +225,8 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
         <ArrowLeft size={17} />
         {t("back")}
       </Link>
-      <section className="mt-5 overflow-hidden rounded-[2rem] bg-[#123d25] p-6 text-white shadow-[0_22px_60px_rgba(15,69,35,.18)] md:p-9">
-        <div className="grid items-center gap-8 md:grid-cols-[1fr_auto]">
+      <section className="reference-hero mt-5 p-6 text-white md:p-9">
+        <div className="grid items-center gap-8 lg:grid-cols-[1fr_minmax(17rem,.8fr)] lg:gap-12">
           <div className="flex items-start gap-4">
             <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-white/10 text-[#8ee0a5]">
               <PlugZap size={28} />
@@ -262,27 +262,39 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-between gap-6 rounded-3xl border border-white/10 bg-white/10 p-5 md:min-w-72">
-            <div>
-              <p className="text-xs text-white/60">{t("confirmedRelay")}</p>
-              <p className="mt-2 text-2xl font-black">
-                {device.state?.relayState ? d("on") : d("off")}
-              </p>
-              <p className="mt-1 text-xs text-white/55">
-                {t("confirmedNotice")}
-              </p>
+          <div className="flex flex-col items-center">
+            <div className={`power-gauge ${device.state?.relayState ? "" : "is-off"}`}>
+              <svg viewBox="0 0 260 160" aria-hidden="true">
+                <defs>
+                  <linearGradient id="powerGaugeGradient" x1="0" y1="1" x2="1" y2="0">
+                    <stop offset="0" stopColor="#f0d441" />
+                    <stop offset=".55" stopColor="#a9e746" />
+                    <stop offset="1" stopColor="#54d276" />
+                  </linearGradient>
+                </defs>
+                <path className="power-gauge-track" d="M 25 140 A 105 105 0 0 1 235 140" />
+                <path className="power-gauge-fill" d="M 25 140 A 105 105 0 0 1 235 140" />
+              </svg>
+              <div className="text-center">
+                <p className="power-gauge-caption">{t("power")}</p>
+                <p className="power-gauge-value">{number.format(device.state?.powerW ?? 0)}<small>W</small></p>
+              </div>
             </div>
-            <PowerToggle
-              deviceId={device.id}
-              initialState={device.state?.relayState ?? false}
-              demo={false}
-              onConfirmed={() => void load(true)}
-            />
+            <div className="mt-7 flex flex-col items-center">
+              <PowerToggle
+                appearance="hero"
+                deviceId={device.id}
+                initialState={device.state?.relayState ?? false}
+                demo={false}
+                onConfirmed={() => void load(true)}
+              />
+              <p className="mt-3 text-center text-[.72rem] text-white/55">{t("confirmedRelay")} · {t("confirmedNotice")}</p>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section className="stagger-in mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {metrics.map(({ label, value, unit, icon: Icon, tone }) => (
           <article
             key={label}

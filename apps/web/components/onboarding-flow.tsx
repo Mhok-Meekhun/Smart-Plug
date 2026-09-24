@@ -140,7 +140,7 @@ export function OnboardingFlow() {
   ];
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[.72fr_1.28fr]">
+    <div className="stagger-in grid gap-6 xl:grid-cols-[.72fr_1.28fr]">
       <aside className="panel h-fit p-6 md:p-7">
         <div className="flex items-center gap-3"><span className="grid size-11 place-items-center rounded-2xl bg-[#e8f7eb] text-[#218f41]"><ShieldCheck size={22}/></span><div><p className="text-xs font-bold tracking-[.14em] text-[#218f41]">{t("eyebrow")}</p><h2 className="mt-1 text-xl font-black">{t("progress")}</h2></div></div>
         <ol className="mt-7 space-y-3">
@@ -153,7 +153,7 @@ export function OnboardingFlow() {
         {error ? <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
         {notice ? <div role="status" className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-800">{notice}</div> : null}
 
-        <article className="panel p-6 md:p-7">
+        <article className="panel setup-step p-6 md:p-7">
           <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-[#eaf6ec] text-[#218f41]"><House size={20}/></span><div><p className="text-xs font-bold text-[#238e41]">{t("step", { number: 1 })}</p><h2 className="text-xl font-black">{t("createHome")}</h2></div></div>
           {homes.length > 0 ? <label className="mt-5 block"><span className="mb-2 block text-sm font-bold">{t("selectHome")}</span><select value={homeId} onChange={(event) => setHomeId(event.target.value)} className="h-12 w-full rounded-2xl border border-[#dce5dd] bg-white px-4 outline-none focus:border-[#269b47]">{homes.map((home) => <option key={home.id} value={home.id}>{home.name}</option>)}</select></label> : <form onSubmit={submitHome} className="mt-4 flex flex-col gap-3 sm:flex-row"><input required name="name" maxLength={120} placeholder={t("homeNamePlaceholder")} className="h-12 min-w-0 flex-1 rounded-2xl border border-[#dce5dd] px-4 outline-none focus:border-[#269b47]"/><button disabled={pending} className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#1f9440] px-5 font-bold text-white disabled:opacity-60"><Plus size={18}/>{t("addHome")}</button></form>}
         </article>

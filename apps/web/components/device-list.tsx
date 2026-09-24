@@ -111,14 +111,14 @@ export function DeviceList() {
       ) : null}
 
       {!loading && !error && devices.length > 0 ? (
-        <section className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <section className="stagger-in mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {devices.map((device) => {
             const online = device.state?.connectionStatus === "ONLINE";
             const simulated = device.type === "SIMULATED_SMART_PLUG";
             return (
-              <article key={device.id} className="panel p-5 md:p-6">
+              <article key={device.id} className="device-card p-5 md:p-6">
                 <div className="flex items-start gap-4">
-                  <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-[#eaf7ed] text-[#1e8e3e]">
+                  <span className={`device-icon ${online ? "" : "is-off"}`}>
                     <PlugZap size={23} />
                   </span>
                   <div className="min-w-0 flex-1">
@@ -146,10 +146,11 @@ export function DeviceList() {
                     demo={false}
                   />
                 </div>
-                <div className="mt-5 flex items-center justify-between rounded-2xl bg-[#f5f8f5] p-3">
+                <div className="mt-5 flex items-center justify-between rounded-2xl bg-[#f6f9f6] p-3.5">
                   <span
                     className={`flex items-center gap-2 text-xs font-bold ${online ? "text-[#218d40]" : "text-[#7d867f]"}`}
                   >
+                    <span className={`status-dot ${online ? "is-online" : ""}`} />
                     {online ? <Wifi size={15} /> : <WifiOff size={15} />}{" "}
                     {online ? deviceText("online") : deviceText("offline")}
                   </span>
