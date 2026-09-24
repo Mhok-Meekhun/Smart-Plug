@@ -59,3 +59,31 @@ export function resolvePublicAuthOrigin(
 
   return url.origin;
 }
+
+export type RecoverySessionFragment =
+  | { accessToken: string; refreshToken: string }
+  | { error: true }
+  | undefined;
+
+export function parseRecoverySessionFragment(
+  fragment: string,
+): RecoverySessionFragment {
+  const params = new URLSearchParams(
+    fragment.startsWith("#") ? fragment.slice(1) : fragment,
+  );
+
+  if (
+    params.has("error") ||
+    params.has("error_code") ||
+    params.has("error_description")
+  ) {
+    return { error: true };
+  }
+
+  const accessToken = params.get("access_token");
+  const refreshToken = params.get("refresh_token");
+  if (!accessToken && !refreshToken) return undefined;
+  if (!accessToken || !refreshToken) return { error: true };
+
+  return { accessToken, refreshToken };
+}

@@ -2,10 +2,17 @@
 
 import { ArrowRight, LoaderCircle, LockKeyhole, Mail, Zap } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Link, useRouter } from "../i18n/navigation";
-import { authErrorMessageKey, buildAuthCallbackUrl } from "../lib/auth";
-import { createClient } from "../lib/supabase/client";
+import {
+  authErrorMessageKey,
+  buildAuthCallbackUrl,
+  parseRecoverySessionFragment,
+} from "../lib/auth";
+import {
+  createClient,
+  createRecoveryRequestClient,
+} from "../lib/supabase/client";
 import { LanguageSwitcher } from "./language-switcher";
 
 export function PasswordRecoveryForm({
@@ -18,15 +25,63 @@ export function PasswordRecoveryForm({
   const router = useRouter();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const [recoveryReady, setRecoveryReady] = useState(mode === "request");
+  const [checkingRecovery, setCheckingRecovery] = useState(mode === "update");
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (mode !== "update") return;
+
+    let active = true;
+    const supabase = createClient();
+
+    async function prepareRecoverySession() {
+      try {
+        const fragment = parseRecoverySessionFragment(window.location.hash);
+        if (fragment && "error" in fragment) {
+          throw { code: "session_not_found" };
+        }
+
+        if (fragment) {
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: fragment.accessToken,
+            refresh_token: fragment.refreshToken,
+          });
+          if (sessionError) throw sessionError;
+
+          window.history.replaceState(
+            window.history.state,
+            "",
+            `${window.location.pathname}${window.location.search}`,
+          );
+        }
+
+        const { data, error: userError } = await supabase.auth.getUser();
+        if (userError || !data.user) {
+          throw userError ?? { code: "session_not_found" };
+        }
+
+        if (active) setRecoveryReady(true);
+      } catch {
+        if (active) setError(t("recoveryExpired"));
+      } finally {
+        if (active) setCheckingRecovery(false);
+      }
+    }
+
+    void prepareRecoverySession();
+    return () => {
+      active = false;
+    };
+  }, [mode, t]);
 
   function submit(formData: FormData) {
     setError(undefined);
     setNotice(undefined);
     startTransition(async () => {
       try {
-        const supabase = createClient();
         if (mode === "request") {
+          const supabase = createRecoveryRequestClient();
           const email = String(formData.get("email") ?? "");
           const { error: authError } =
             await supabase.auth.resetPasswordForEmail(email, {
@@ -41,6 +96,12 @@ export function PasswordRecoveryForm({
           return;
         }
 
+        if (!recoveryReady) {
+          setError(t("recoveryExpired"));
+          return;
+        }
+
+        const supabase = createClient();
         const password = String(formData.get("password") ?? "");
         const confirmation = String(formData.get("passwordConfirmation") ?? "");
         if (password !== confirmation) {
@@ -101,39 +162,93 @@ export function PasswordRecoveryForm({
             {t(mode === "request" ? "forgotPasswordBody" : "resetPasswordBody")}
           </p>
 
-          <form action={submit} className="mt-8 space-y-4">
-            {mode === "request" ? (
-              <label className="block">
-                <span className="mb-2 block text-sm font-bold">{t("email")}</span>
-                <span className="flex items-center gap-3 rounded-2xl border border-[#dce5dd] bg-white px-4">
-                  <Mail size={18} className="text-[#7a857d]" />
-                  <input required type="email" name="email" autoComplete="email" className="h-13 min-w-0 flex-1 outline-none" />
-                </span>
-              </label>
-            ) : (
-              <>
-                <PasswordField label={t("newPassword")} name="password" />
-                <PasswordField label={t("confirmPassword")} name="passwordConfirmation" />
-              </>
-            )}
+          {checkingRecovery ? (
+            <p
+              role="status"
+              className="mt-8 flex items-center gap-3 rounded-xl bg-green-50 p-4 text-sm text-green-800"
+            >
+              <LoaderCircle className="animate-spin" size={19} />
+              {t("checkingRecovery")}
+            </p>
+          ) : null}
 
-            {error ? (
-              <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
-                {error}
-              </p>
-            ) : null}
-            {notice ? (
-              <p role="status" className="rounded-xl bg-green-50 p-3 text-sm text-green-800">
-                {notice}
-              </p>
-            ) : null}
+          {!checkingRecovery && mode === "update" && !recoveryReady ? (
+            <div className="mt-8 space-y-4">
+              {error ? (
+                <p
+                  role="alert"
+                  className="rounded-xl bg-red-50 p-3 text-sm text-red-700"
+                >
+                  {error}
+                </p>
+              ) : null}
+              <Link
+                className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#209842] font-bold text-white shadow-lg shadow-green-900/15 transition hover:bg-[#167b34]"
+                href="/auth/forgot-password"
+              >
+                {t("requestNewRecovery")}
+                <ArrowRight size={18} />
+              </Link>
+            </div>
+          ) : null}
 
-            <button disabled={pending} className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#209842] font-bold text-white shadow-lg shadow-green-900/15 transition hover:bg-[#167b34] disabled:opacity-60">
-              {pending ? <LoaderCircle className="animate-spin" size={19} /> : null}
-              {t(mode === "request" ? "sendRecovery" : "savePassword")}
-              <ArrowRight size={18} />
-            </button>
-          </form>
+          {!checkingRecovery && (mode === "request" || recoveryReady) ? (
+            <form action={submit} className="mt-8 space-y-4">
+              {mode === "request" ? (
+                <label className="block">
+                  <span className="mb-2 block text-sm font-bold">
+                    {t("email")}
+                  </span>
+                  <span className="flex items-center gap-3 rounded-2xl border border-[#dce5dd] bg-white px-4">
+                    <Mail size={18} className="text-[#7a857d]" />
+                    <input
+                      required
+                      type="email"
+                      name="email"
+                      autoComplete="email"
+                      className="h-13 min-w-0 flex-1 outline-none"
+                    />
+                  </span>
+                </label>
+              ) : (
+                <>
+                  <PasswordField label={t("newPassword")} name="password" />
+                  <PasswordField
+                    label={t("confirmPassword")}
+                    name="passwordConfirmation"
+                  />
+                </>
+              )}
+
+              {error ? (
+                <p
+                  role="alert"
+                  className="rounded-xl bg-red-50 p-3 text-sm text-red-700"
+                >
+                  {error}
+                </p>
+              ) : null}
+              {notice ? (
+                <p
+                  role="status"
+                  className="rounded-xl bg-green-50 p-3 text-sm text-green-800"
+                >
+                  {notice}
+                </p>
+              ) : null}
+
+              <button
+                disabled={pending}
+                className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#209842] font-bold text-white shadow-lg shadow-green-900/15 transition hover:bg-[#167b34] disabled:opacity-60"
+              >
+                {pending ? (
+                  <LoaderCircle className="animate-spin" size={19} />
+                ) : null}
+                {t(mode === "request" ? "sendRecovery" : "savePassword")}
+                <ArrowRight size={18} />
+              </button>
+            </form>
+          ) : null}
 
           <p className="mt-6 text-center text-sm text-[#69746c]">
             <Link className="font-bold text-[#1c8b3d] underline-offset-4 hover:underline" href="/auth/login">

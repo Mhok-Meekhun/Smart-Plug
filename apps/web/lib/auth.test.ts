@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   authErrorMessageKey,
   buildAuthCallbackUrl,
+  parseRecoverySessionFragment,
   resolvePublicAuthOrigin,
 } from "./auth";
 
@@ -50,5 +51,28 @@ describe("authentication helpers", () => {
     expect(
       resolvePublicAuthOrigin("http://localhost:3000/th/auth/callback"),
     ).toBe("http://localhost:3000");
+  });
+
+  it("extracts a complete implicit recovery session without exposing it elsewhere", () => {
+    expect(
+      parseRecoverySessionFragment(
+        "#access_token=access-value&refresh_token=refresh-value&type=recovery",
+      ),
+    ).toEqual({
+      accessToken: "access-value",
+      refreshToken: "refresh-value",
+    });
+  });
+
+  it("rejects incomplete and failed recovery fragments", () => {
+    expect(parseRecoverySessionFragment("#access_token=access-value")).toEqual({
+      error: true,
+    });
+    expect(
+      parseRecoverySessionFragment(
+        "#error=access_denied&error_code=otp_expired",
+      ),
+    ).toEqual({ error: true });
+    expect(parseRecoverySessionFragment("")).toBeUndefined();
   });
 });

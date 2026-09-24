@@ -20,13 +20,17 @@ export async function GET(
   );
   const failureUrl = new URL(`/${locale}/auth/forgot-password`, publicOrigin);
   failureUrl.searchParams.set("error", "recovery_callback_failed");
+  const resetUrl = new URL(`/${locale}/auth/reset-password`, publicOrigin);
 
   const code = request.nextUrl.searchParams.get("code");
-  if (!code) return NextResponse.redirect(failureUrl);
+  if (!code) {
+    const response = NextResponse.redirect(resetUrl);
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
+  }
 
-  const response = NextResponse.redirect(
-    new URL(`/${locale}/auth/reset-password`, publicOrigin),
-  );
+  const response = NextResponse.redirect(resetUrl);
+  response.headers.set("Cache-Control", "private, no-store");
   const { url, publishableKey } = supabaseConfig();
   const supabase = createServerClient(url, publishableKey, {
     cookies: {
@@ -39,5 +43,9 @@ export async function GET(
     },
   });
   const { error } = await supabase.auth.exchangeCodeForSession(code);
-  return error ? NextResponse.redirect(failureUrl) : response;
+  if (!error) return response;
+
+  const failureResponse = NextResponse.redirect(failureUrl);
+  failureResponse.headers.set("Cache-Control", "private, no-store");
+  return failureResponse;
 }
