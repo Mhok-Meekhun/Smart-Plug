@@ -5,7 +5,8 @@ import {
   deviceTopic,
   parseDeviceTopic,
   relayCommandPayloadSchema,
-  telemetryPayloadSchema
+  telemetryPayloadSchema,
+  topicDeviceIdMatchesPayload
 } from "@smart-home/contracts";
 import { nextRepeatingRun } from "@smart-home/domain";
 import mqtt, { type MqttClient } from "mqtt";
@@ -91,6 +92,11 @@ export class IotWorker {
     let json: unknown;
     try { json = JSON.parse(bytes.toString("utf8")); }
     catch { this.log("warn", "invalid_json", { topic }); return; }
+
+    if (!topicDeviceIdMatchesPayload(parsedTopic.deviceId, json)) {
+      this.log("warn", "topic_payload_device_id_mismatch", { topic });
+      return;
+    }
 
     try {
       if (parsedTopic.kind === "telemetry") await this.ingestTelemetry(telemetryPayloadSchema.parse(json));

@@ -4,7 +4,8 @@ import {
   deviceTopic,
   parseDeviceTopic,
   relayCommandPayloadSchema,
-  telemetryPayloadSchema
+  telemetryPayloadSchema,
+  topicDeviceIdMatchesPayload
 } from "./index.js";
 
 const timestamp = "2026-08-15T14:25:30.000Z";
@@ -76,5 +77,12 @@ describe("MQTT topics", () => {
   it("rejects topics outside the contract", () => {
     expect(parseDeviceTopic("devices/plug_001/telemetry")).toBeNull();
     expect(parseDeviceTopic("v1/devices/plug_001/admin")).toBeNull();
+  });
+
+  it("requires the payload device ID to match the MQTT topic", () => {
+    expect(topicDeviceIdMatchesPayload("plug_001", { deviceId: "plug_001" })).toBe(true);
+    expect(topicDeviceIdMatchesPayload("plug_001", { deviceId: "plug_002" })).toBe(false);
+    expect(topicDeviceIdMatchesPayload("plug_001", null)).toBe(false);
+    expect(topicDeviceIdMatchesPayload("plug_001", { deviceId: 7 })).toBe(false);
   });
 });

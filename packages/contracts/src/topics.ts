@@ -51,3 +51,19 @@ export function parseDeviceTopic(topic: string): {
     kind: parts[3] as MqttMessageKind
   };
 }
+
+/**
+ * Verifies that a message is published under the topic for the device it names.
+ * MQTT ACLs should enforce this too; this is a second check at the worker boundary.
+ */
+export function topicDeviceIdMatchesPayload(
+  topicDeviceId: string,
+  payload: unknown
+): boolean {
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    "deviceId" in payload &&
+    payload.deviceId === topicDeviceId
+  );
+}
