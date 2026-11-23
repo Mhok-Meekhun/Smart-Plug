@@ -2,6 +2,8 @@
 
 import {
   Activity,
+  ArrowUpRight,
+  House,
   CalendarClock,
   CircleDollarSign,
   LoaderCircle,
@@ -17,6 +19,7 @@ import { apiRequest } from "../lib/api-client";
 import { createClient } from "../lib/supabase/client";
 import { EnergyChart } from "./energy-chart";
 import { PowerToggle } from "./power-toggle";
+import { ApplianceIcon } from "./appliance-icon";
 
 type Home = { id: string; name: string; currency: string };
 type Device = {
@@ -34,6 +37,7 @@ type Device = {
 };
 type Schedule = {
   id: string;
+  deviceId: string;
   name: string;
   enabled: boolean;
   nextRunAt: string | null;
@@ -48,54 +52,12 @@ type EnergyResponse = {
   points: EnergyPoint[];
 };
 
-const demoDevices: Device[] = [
-  {
-    id: "demo-tv",
-    homeId: "demo-home",
-    name: "Living room TV",
-    type: "SIMULATED_SMART_PLUG",
-    room: { name: "Living room" },
-    state: {
-      connectionStatus: "ONLINE",
-      relayState: true,
-      powerW: 65,
-      lastSeenAt: new Date().toISOString(),
-    },
-  },
-  {
-    id: "demo-fan",
-    homeId: "demo-home",
-    name: "Bedroom fan",
-    type: "SIMULATED_SMART_PLUG",
-    room: { name: "Bedroom" },
-    state: {
-      connectionStatus: "ONLINE",
-      relayState: true,
-      powerW: 28,
-      lastSeenAt: new Date().toISOString(),
-    },
-  },
-];
-const demoEnergy: EnergyResponse = {
-  energyKwh: 7.04,
-  estimatedCost: 29.57,
-  currency: "THB",
-  points: [0.82, 1.04, 0.76, 1.18, 1.31, 0.94, 0.99].map(
-    (energyKwh, index) => ({
-      deviceId: "demo-tv",
-      bucketStart: new Date(
-        Date.now() - (6 - index) * 86_400_000,
-      ).toISOString(),
-      energyKwh,
-    }),
-  ),
-};
-
 export function ConnectedDashboard({ demo }: { demo: boolean }) {
   const t = useTranslations("Dashboard");
   const d = useTranslations("Device");
   const locale = useLocale();
   const [homes, setHomes] = useState<Home[]>([]);
+  const [selectedHomeId, setSelectedHomeId] = useState("");
   const [devices, setDevices] = useState<Device[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [energy, setEnergy] = useState<EnergyResponse>();
@@ -121,46 +83,31 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
       if (!background) setLoading(true);
       setError(false);
       try {
-        if (demo) {
-          setHomes([{ id: "demo-home", name: "Demo home", currency: "THB" }]);
-          setDevices(demoDevices);
-          setSchedules([
-            {
-              id: "demo-schedule",
-              name: "Turn off TV",
-              enabled: true,
-              nextRunAt: new Date(Date.now() + 3_600_000).toISOString(),
-              desiredRelayState: false,
-              device: { name: "Living room TV" },
-            },
-          ]);
-          setEnergy(demoEnergy);
+        const [homeItems, deviceItems, scheduleItems] = await Promise.all([
+          apiRequest<Home[]>("/v1/homes"),
+          apiRequest<Device[]>("/v1/devices"),
+          apiRequest<Schedule[]>("/v1/schedules"),
+        ]);
+        setHomes(homeItems);
+        const homeId = homeItems.find((home) => home.id === selectedHomeId)?.id ?? homeItems[0]?.id;
+        const homeDevices = deviceItems.filter((device) => device.homeId === homeId);
+        setDevices(homeDevices);
+        setSchedules(scheduleItems.filter((schedule) => homeDevices.some((device) => device.id === schedule.deviceId)));
+        if (homeId) {
+          const to = new Date();
+          to.setUTCDate(to.getUTCDate() + 1);
+          to.setUTCHours(0, 0, 0, 0);
+          const from = new Date(to);
+          from.setUTCDate(from.getUTCDate() - 7);
+          const query = new URLSearchParams({
+            homeId,
+            bucket: "DAY",
+            from: from.toISOString(),
+            to: to.toISOString(),
+          });
+          setEnergy(await apiRequest<EnergyResponse>(`/v1/energy?${query}`));
         } else {
-          const [homeItems, deviceItems, scheduleItems] = await Promise.all([
-            apiRequest<Home[]>("/v1/homes"),
-            apiRequest<Device[]>("/v1/devices"),
-            apiRequest<Schedule[]>("/v1/schedules"),
-          ]);
-          setHomes(homeItems);
-          setDevices(deviceItems);
-          setSchedules(scheduleItems);
-          const homeId = homeItems[0]?.id;
-          if (homeId) {
-            const to = new Date();
-            to.setUTCDate(to.getUTCDate() + 1);
-            to.setUTCHours(0, 0, 0, 0);
-            const from = new Date(to);
-            from.setUTCDate(from.getUTCDate() - 7);
-            const query = new URLSearchParams({
-              homeId,
-              bucket: "DAY",
-              from: from.toISOString(),
-              to: to.toISOString(),
-            });
-            setEnergy(await apiRequest<EnergyResponse>(`/v1/energy?${query}`));
-          } else {
-            setEnergy(undefined);
-          }
+          setEnergy(undefined);
         }
         setUpdatedAt(new Date());
       } catch {
@@ -169,16 +116,21 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
         if (!background) setLoading(false);
       }
     },
-    [demo],
+    [selectedHomeId],
   );
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const homeId = homes[0]?.id;
+  const activeHome = homes.find((home) => home.id === selectedHomeId) ?? homes[0];
+  const homeId = activeHome?.id;
   useEffect(() => {
-    if (demo || !homeId) return;
+    if (!homeId) return;
+    if (demo) {
+      const timer = setInterval(() => void load(true), 5_000);
+      return () => clearInterval(timer);
+    }
     const client = createClient();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const refresh = () => {
@@ -267,7 +219,7 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
         <h1 className="mt-4 text-xl font-black">{t("loadFailed")}</h1>
         <button
           onClick={() => void load()}
-          className="mt-5 rounded-2xl bg-[#209842] px-5 py-3 font-bold text-white"
+          className="mt-5 rounded-2xl bg-[#285b70] px-5 py-3 font-bold text-white"
         >
           {t("retry")}
         </button>
@@ -294,8 +246,13 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
         />
         <div className="relative grid gap-8 xl:grid-cols-[1.2fr_.8fr] xl:items-end">
           <div>
-            <p className="text-xs font-bold tracking-[.18em] text-[#89dda0]">
-              {t("eyebrow")}
+            <p className="text-xs font-bold tracking-[.18em] text-[#ffe080]">
+              <House size={15} className="mr-2 inline" aria-hidden="true" />
+              {homes.length > 1 ? (
+                <select aria-label={locale === "th" ? "เลือกบ้าน" : "Select home"} value={homeId} onChange={(event) => setSelectedHomeId(event.target.value)} className="rounded-lg border border-white/30 bg-[#285b70] px-2 py-1">
+                  {homes.map((home) => <option value={home.id} key={home.id}>{home.name}</option>)}
+                </select>
+              ) : activeHome?.name ?? t("eyebrow")}
             </p>
             <h1 className="mt-4 max-w-3xl text-3xl font-black leading-tight tracking-[-.04em] md:text-5xl">
               {t("title")}
@@ -338,14 +295,30 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
         </div>
       </section>
 
+      <nav className="ruan-shortcuts mt-6" aria-label={locale === "th" ? "ทางลัด" : "Shortcuts"}>
+        {([
+          ["/devices", PlugZap, "อุปกรณ์และการควบคุม", "Devices & controls"],
+          ["/energy", CircleDollarSign, "พลังงานและค่าไฟ", "Energy & costs"],
+          ["/home/rooms", House, "บ้านและห้อง", "Home & rooms"],
+          ["/schedules", CalendarClock, "ตารางเวลา", "Schedules"],
+        ] as const).map(([href, Icon, th, en]) => {
+          return (
+            <Link key={href} href={href} className="panel">
+              <Icon size={20} aria-hidden="true" />
+              <span>{locale === "th" ? th : en}</span>
+              <ArrowUpRight size={16} aria-hidden="true" />
+            </Link>
+          );
+        })}
+      </nav>
       <section className="dashboard-metrics stagger-in mt-6 grid gap-4 sm:grid-cols-3">
         {[
           {
-            label: t("livePower"),
-            value: number.format(totalPower),
-            unit: "W",
-            icon: Zap,
-            color: "text-[#218d40] bg-[#e9f7ec]",
+            label: t("online"),
+            value: `${onlineCount} / ${devices.length}`,
+            unit: "",
+            icon: Wifi,
+            color: "text-[#245b70] bg-[#e2f0f5]",
           },
           {
             label: t("todayEnergy"),
@@ -396,7 +369,7 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
             </div>
             <Link
               href="/devices"
-              className="rounded-full bg-[#edf7ef] px-4 py-2 text-xs font-bold text-[#1a7f38]"
+              className="rounded-full bg-[#e6f2f6] px-4 py-2 text-xs font-bold text-[#1a7f38]"
             >
               {t("viewAll")}
             </Link>
@@ -409,7 +382,7 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
                 </p>
                 <Link
                   href="/devices/add"
-                  className="mt-4 inline-block rounded-xl bg-white px-4 py-2 text-xs font-bold text-[#187b36]"
+                  className="mt-4 inline-block rounded-xl bg-white px-4 py-2 text-xs font-bold text-[#315f72]"
                 >
                   {t("addDevice")}
                 </Link>
@@ -423,12 +396,12 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
                     className="device-card flex min-h-32 items-center gap-4 p-4"
                   >
                     <span className={`device-icon ${online ? "" : "is-off"}`}>
-                      <PlugZap size={23} />
+                      <ApplianceIcon name={device.name} />
                     </span>
                     <div className="min-w-0 flex-1">
                       <Link
                         href={`/devices/${device.id}`}
-                        className="truncate font-bold hover:text-[#168039]"
+                        className="truncate font-bold hover:text-[#315f72]"
                       >
                         {device.name}
                       </Link>
@@ -451,26 +424,8 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
                       deviceId={device.id}
                       initialState={device.state?.relayState ?? false}
                       demo={demo}
-                      onConfirmed={(relayState) => {
-                        if (demo)
-                          setDevices((items) =>
-                            items.map((item) =>
-                              item.id === device.id
-                                ? {
-                                    ...item,
-                                    state: item.state
-                                      ? {
-                                          ...item.state,
-                                          relayState,
-                                          powerW: relayState ? 65 : 0,
-                                        }
-                                      : item.state,
-                                  }
-                                : item,
-                            ),
-                          );
-                        else void load(true);
-                      }}
+                      unavailable={demo && !online}
+                      onConfirmed={() => void load(true)}
                     />
                   </article>
                 );

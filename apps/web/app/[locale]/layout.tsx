@@ -6,7 +6,7 @@ import { routing } from "../../i18n/routing";
 import "../globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "บ้านประหยัด | Smart Home Energy", template: "%s | บ้านประหยัด" },
+  title: { default: "RUAN AI | Smart Home Energy", template: "%s | RUAN AI" },
   description: "Monitor and manage smart-plug energy use in Thai or English."
 };
 

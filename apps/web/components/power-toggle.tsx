@@ -4,18 +4,21 @@ import { LoaderCircle, Power } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "../lib/supabase/client";
+import { apiRequest } from "../lib/api-client";
 
 export function PowerToggle({
   deviceId,
   initialState,
   demo,
   onConfirmed,
+  unavailable = false,
   appearance = "switch",
 }: {
   deviceId: string;
   initialState: boolean;
   demo: boolean;
   onConfirmed?: (relayState: boolean) => void;
+  unavailable?: boolean;
   appearance?: "switch" | "hero";
 }) {
   const t = useTranslations("Device");
@@ -31,13 +34,15 @@ export function PowerToggle({
     setError(undefined);
     startTransition(async () => {
       const desired = !relayState;
-      if (demo) {
-        await new Promise((resolve) => setTimeout(resolve, 450));
-        setRelayState(desired);
-        onConfirmed?.(desired);
-        return;
-      }
       try {
+        if (demo) {
+          await apiRequest(`/v1/devices/${deviceId}/commands/relay`, {
+            method: "POST", body: JSON.stringify({ relayState: desired }),
+          });
+          setRelayState(desired);
+          onConfirmed?.(desired);
+          return;
+        }
         const { data } = await createClient().auth.getSession();
         const token = data.session?.access_token;
         if (!token) throw new Error("Missing session");
@@ -73,7 +78,7 @@ export function PowerToggle({
       <button
         type="button"
         onClick={toggle}
-        disabled={pending}
+        disabled={pending || unavailable}
         role={appearance === "switch" ? "switch" : undefined}
         aria-checked={appearance === "switch" ? relayState : undefined}
         aria-pressed={appearance === "hero" ? relayState : undefined}

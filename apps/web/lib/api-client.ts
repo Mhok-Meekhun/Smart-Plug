@@ -1,9 +1,12 @@
 import { createClient } from "./supabase/client";
+import { demoMode } from "./supabase/config";
+import { demoRequest } from "./demo-api";
 
 export async function apiRequest<T>(
   path: string,
   init: RequestInit = {}
 ): Promise<T> {
+  if (demoMode()) return demoRequest(path, init) as T;
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   if (!apiUrl) throw new Error("API URL is not configured");
 

@@ -26,6 +26,7 @@ import {
 } from "react";
 import { Link } from "../i18n/navigation";
 import { apiRequest } from "../lib/api-client";
+import { demoMode } from "../lib/supabase/config";
 
 type Device = {
   id: string;
@@ -84,8 +85,8 @@ export function ScheduleManager() {
     [locale],
   );
 
-  const load = useCallback(() => {
-    setLoading(true);
+  const load = useCallback((background = false) => {
+    if (!background) setLoading(true);
     setLoadFailed(false);
     Promise.all([
       apiRequest<Device[]>("/v1/devices"),
@@ -96,10 +97,15 @@ export function ScheduleManager() {
         setSchedules(scheduleItems);
       })
       .catch(() => setLoadFailed(true))
-      .finally(() => setLoading(false));
+      .finally(() => { if (!background) setLoading(false); });
   }, []);
 
-  useEffect(load, [load]);
+  useEffect(() => {
+    load();
+    if (!demoMode()) return;
+    const timer = setInterval(() => load(true), 5_000);
+    return () => clearInterval(timer);
+  }, [load]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -175,7 +181,7 @@ export function ScheduleManager() {
 
   if (loading)
     return (
-      <div className="panel flex min-h-72 items-center justify-center gap-3 p-8 text-sm font-bold text-[#68736a]">
+      <div className="panel flex min-h-72 items-center justify-center gap-3 p-8 text-sm font-bold text-[#5d6b71]">
         <LoaderCircle className="animate-spin" size={20} />
         {t("loading")}
       </div>
@@ -186,8 +192,8 @@ export function ScheduleManager() {
         <ShieldAlert className="text-red-500" size={35} />
         <p className="font-bold">{t("loadFailed")}</p>
         <button
-          onClick={load}
-          className="rounded-2xl bg-[#edf7ef] px-5 py-2.5 font-bold text-[#187b36]"
+          onClick={() => load()}
+          className="rounded-2xl bg-[#e6f2f6] px-5 py-2.5 font-bold text-[#315f72]"
         >
           {t("retry")}
         </button>
@@ -198,12 +204,12 @@ export function ScheduleManager() {
       <div className="panel flex min-h-80 flex-col items-center justify-center p-8 text-center">
         <PlugZap size={35} className="text-[#239443]" />
         <h2 className="mt-4 text-xl font-black">{t("deviceRequired")}</h2>
-        <p className="mt-2 max-w-md text-sm leading-6 text-[#68736a]">
+        <p className="mt-2 max-w-md text-sm leading-6 text-[#5d6b71]">
           {t("deviceRequiredBody")}
         </p>
         <Link
           href="/devices/add"
-          className="mt-5 rounded-2xl bg-[#209842] px-5 py-3 font-bold text-white"
+          className="mt-5 rounded-2xl bg-[#285b70] px-5 py-3 font-bold text-white"
         >
           {t("addDevice")}
         </Link>
@@ -214,7 +220,7 @@ export function ScheduleManager() {
     <div className="stagger-in grid items-start gap-6 lg:grid-cols-[.9fr_1.1fr]">
       <section className="panel p-5 md:p-7">
         <div className="flex items-center gap-3">
-          <span className="grid size-11 place-items-center rounded-2xl bg-[#eaf7ed] text-[#1e8e3e]">
+          <span className="grid size-11 place-items-center rounded-2xl bg-[#e2f0f5] text-[#1e8e3e]">
             <Plus size={21} />
           </span>
           <div>
@@ -245,7 +251,7 @@ export function ScheduleManager() {
             <select
               required
               name="deviceId"
-              className="h-12 w-full rounded-2xl border border-[#dce5dd] bg-white px-4"
+              className="h-12 w-full rounded-2xl border border-[#d1e1e8] bg-white px-4"
             >
               {devices.map((device) => (
                 <option key={device.id} value={device.id}>
@@ -262,7 +268,7 @@ export function ScheduleManager() {
               name="name"
               maxLength={120}
               placeholder={t("namePlaceholder")}
-              className="h-12 w-full rounded-2xl border border-[#dce5dd] px-4"
+              className="h-12 w-full rounded-2xl border border-[#d1e1e8] px-4"
             />
           </label>
           <fieldset>
@@ -290,7 +296,7 @@ export function ScheduleManager() {
                   type="button"
                   aria-pressed={relayState === value}
                   onClick={() => setRelayState(value)}
-                  className={`flex h-12 items-center justify-center gap-2 rounded-2xl border font-bold ${relayState === value ? "border-[#2aa34b] bg-[#eaf7ed] text-[#197c37]" : "border-[#dce5dd] bg-white text-[#69746b]"}`}
+                  className={`flex h-12 items-center justify-center gap-2 rounded-2xl border font-bold ${relayState === value ? "border-[#2aa34b] bg-[#e2f0f5] text-[#197c37]" : "border-[#d1e1e8] bg-white text-[#69746b]"}`}
                 >
                   {value ? <PlayCircle size={19} /> : <PauseCircle size={19} />}{" "}
                   {value ? t("turnOn") : t("turnOff")}
@@ -307,7 +313,7 @@ export function ScheduleManager() {
                 required
                 name="executeAt"
                 type="datetime-local"
-                className="h-12 w-full rounded-2xl border border-[#dce5dd] px-4"
+                className="h-12 w-full rounded-2xl border border-[#d1e1e8] px-4"
               />
             </label>
           ) : (
@@ -321,7 +327,7 @@ export function ScheduleManager() {
                   name="localTime"
                   type="time"
                   defaultValue="22:30"
-                  className="h-12 w-full rounded-2xl border border-[#dce5dd] px-4"
+                  className="h-12 w-full rounded-2xl border border-[#d1e1e8] px-4"
                 />
               </label>
               <fieldset>
@@ -338,7 +344,7 @@ export function ScheduleManager() {
                         value={day}
                         defaultChecked={day >= 1 && day <= 5}
                       />
-                      <span className="grid h-10 place-items-center rounded-xl border border-[#dce5dd] text-xs font-bold text-[#6b766d] peer-checked:border-[#2aa34b] peer-checked:bg-[#eaf7ed] peer-checked:text-[#177536]">
+                      <span className="grid h-10 place-items-center rounded-xl border border-[#d1e1e8] text-xs font-bold text-[#6b766d] peer-checked:border-[#2aa34b] peer-checked:bg-[#e2f0f5] peer-checked:text-[#177536]">
                         {t(`weekday${day}`)}
                       </span>
                     </label>
@@ -349,7 +355,7 @@ export function ScheduleManager() {
           )}
           <button
             disabled={pending}
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#209842] font-bold text-white shadow-lg shadow-green-900/15 disabled:opacity-60"
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#285b70] font-bold text-white shadow-lg shadow-green-900/15 disabled:opacity-60"
           >
             {pending && !updatingId ? (
               <LoaderCircle className="animate-spin" size={18} />
@@ -393,7 +399,7 @@ export function ScheduleManager() {
               >
                 <div className="flex items-start gap-4">
                   <span
-                    className={`grid size-11 shrink-0 place-items-center rounded-2xl ${schedule.desiredRelayState ? "bg-[#eaf7ed] text-[#1e8e3e]" : "bg-[#eef1ee] text-[#667169]"}`}
+                    className={`grid size-11 shrink-0 place-items-center rounded-2xl ${schedule.desiredRelayState ? "bg-[#e2f0f5] text-[#1e8e3e]" : "bg-[#eef1ee] text-[#667169]"}`}
                   >
                     {schedule.desiredRelayState ? (
                       <PlayCircle size={21} />
@@ -426,7 +432,7 @@ export function ScheduleManager() {
                     onClick={() => toggle(schedule)}
                     aria-label={schedule.enabled ? t("disable") : t("enable")}
                     aria-pressed={schedule.enabled}
-                    className={`grid size-11 shrink-0 place-items-center rounded-full ${schedule.enabled ? "bg-[#eaf7ed] text-[#1d9140]" : "bg-[#eef1ee] text-[#727d74]"}`}
+                    className={`grid size-11 shrink-0 place-items-center rounded-full ${schedule.enabled ? "bg-[#e2f0f5] text-[#1d9140]" : "bg-[#eef1ee] text-[#727d74]"}`}
                   >
                     {pending && updatingId === schedule.id ? (
                       <LoaderCircle className="animate-spin" size={20} />
@@ -465,7 +471,7 @@ export function ScheduleManager() {
                 </div>
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <span
-                    className={`font-bold ${schedule.desiredRelayState ? "text-[#168039]" : "text-[#69746b]"}`}
+                    className={`font-bold ${schedule.desiredRelayState ? "text-[#315f72]" : "text-[#69746b]"}`}
                   >
                     {schedule.desiredRelayState
                       ? t("willTurnOn")

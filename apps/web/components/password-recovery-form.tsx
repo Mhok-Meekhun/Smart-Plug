@@ -145,7 +145,7 @@ export function PasswordRecoveryForm({
         <div className="w-full max-w-md">
           <div className="mb-8 flex items-center justify-between lg:justify-end">
             <div className="flex items-center gap-2 font-black lg:hidden">
-              <span className="grid size-9 place-items-center rounded-xl bg-[#249c45] text-white">
+              <span className="grid size-9 place-items-center rounded-xl bg-[#39748a] text-white">
                 <Zap size={18} fill="currentColor" />
               </span>
               {locale === "th" ? "บ้านประหยัด" : "Baan Prayat"}
@@ -183,7 +183,7 @@ export function PasswordRecoveryForm({
                 </p>
               ) : null}
               <Link
-                className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#209842] font-bold text-white shadow-lg shadow-green-900/15 transition hover:bg-[#167b34]"
+                className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#285b70] font-bold text-white shadow-lg shadow-green-900/15 transition hover:bg-[#167b34]"
                 href="/auth/forgot-password"
               >
                 {t("requestNewRecovery")}
@@ -199,7 +199,7 @@ export function PasswordRecoveryForm({
                   <span className="mb-2 block text-sm font-bold">
                     {t("email")}
                   </span>
-                  <span className="flex items-center gap-3 rounded-2xl border border-[#dce5dd] bg-white px-4">
+                  <span className="flex items-center gap-3 rounded-2xl border border-[#d1e1e8] bg-white px-4">
                     <Mail size={18} className="text-[#7a857d]" />
                     <input
                       required
@@ -239,7 +239,7 @@ export function PasswordRecoveryForm({
 
               <button
                 disabled={pending}
-                className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#209842] font-bold text-white shadow-lg shadow-green-900/15 transition hover:bg-[#167b34] disabled:opacity-60"
+                className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#285b70] font-bold text-white shadow-lg shadow-green-900/15 transition hover:bg-[#167b34] disabled:opacity-60"
               >
                 {pending ? (
                   <LoaderCircle className="animate-spin" size={19} />
@@ -265,7 +265,7 @@ function PasswordField({ label, name }: { label: string; name: string }) {
   return (
     <label className="block">
       <span className="mb-2 block text-sm font-bold">{label}</span>
-      <span className="flex items-center gap-3 rounded-2xl border border-[#dce5dd] bg-white px-4">
+      <span className="flex items-center gap-3 rounded-2xl border border-[#d1e1e8] bg-white px-4">
         <LockKeyhole size={18} className="text-[#7a857d]" />
         <input required minLength={8} type="password" name={name} autoComplete="new-password" className="h-13 min-w-0 flex-1 outline-none" />
       </span>

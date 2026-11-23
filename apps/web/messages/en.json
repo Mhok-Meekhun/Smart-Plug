@@ -1,5 +1,5 @@
 {
-  "Common": {"appName":"Baan Prayat","loading":"Loading","retry":"Try again","estimated":"Estimated"},
+  "Common": {"appName":"RUAN AI Smart Home","loading":"Loading","retry":"Try again","estimated":"Estimated"},
   "Nav": {"dashboard":"Home","devices":"Devices","energy":"Energy","schedules":"Schedules","settings":"Settings"},
   "Dashboard": {
     "eyebrow":"LIVE HOME ENERGY","greeting":"Good evening","title":"Your home is using energy efficiently.",

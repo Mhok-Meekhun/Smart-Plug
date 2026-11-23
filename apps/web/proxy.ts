@@ -2,11 +2,13 @@ import { createServerClient } from "@supabase/ssr";
 import createMiddleware from "next-intl/middleware";
 import type { NextRequest } from "next/server";
 import { routing } from "./i18n/routing";
+import { demoMode } from "./lib/supabase/config";
 
 const internationalization = createMiddleware(routing);
 
 export default async function proxy(request: NextRequest) {
   const response = internationalization(request);
+  if (demoMode()) return response;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) return response;

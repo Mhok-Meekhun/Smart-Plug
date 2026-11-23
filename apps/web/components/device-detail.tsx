@@ -20,8 +20,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "../i18n/navigation";
 import { apiRequest } from "../lib/api-client";
 import { createClient } from "../lib/supabase/client";
+import { demoMode } from "../lib/supabase/config";
 import { EnergyChart } from "./energy-chart";
 import { PowerToggle } from "./power-toggle";
+import { ApplianceIcon } from "./appliance-icon";
 
 type Device = {
   id: string;
@@ -46,6 +48,8 @@ type Device = {
 };
 type EnergyResponse = {
   energyKwh: number;
+  estimatedCost: number | null;
+  currency: string | null;
   points: Array<{ bucketStart: string; energyKwh: number }>;
 };
 type Schedule = {
@@ -119,6 +123,10 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
 
   useEffect(() => {
     if (!device?.homeId) return;
+    if (demoMode()) {
+      const timer = setInterval(() => void load(true), 5_000);
+      return () => clearInterval(timer);
+    }
     const client = createClient();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const refresh = () => {
@@ -162,7 +170,7 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
           </Link>
           <button
             onClick={() => void load()}
-            className="rounded-2xl bg-[#209842] px-5 py-3 font-bold text-white"
+            className="rounded-2xl bg-[#285b70] px-5 py-3 font-bold text-white"
           >
             {t("retry")}
           </button>
@@ -171,6 +179,7 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
     );
 
   const online = device.state?.connectionStatus === "ONLINE";
+  const powerW = online ? device.state?.powerW : null;
   const simulated = device.type === "SIMULATED_SMART_PLUG";
   const chartData = (energy?.points ?? []).map((point) => ({
     label: new Intl.DateTimeFormat(locale, {
@@ -191,7 +200,7 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
       value: device.state?.voltageV,
       unit: "V",
       icon: Zap,
-      tone: "bg-[#eaf7ed] text-[#218d40]",
+      tone: "bg-[#e2f0f5] text-[#218d40]",
     },
     {
       label: t("current"),
@@ -229,7 +238,7 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
         <div className="grid items-center gap-8 lg:grid-cols-[1fr_minmax(17rem,.8fr)] lg:gap-12">
           <div className="flex items-start gap-4">
             <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-white/10 text-[#8ee0a5]">
-              <PlugZap size={28} />
+              <ApplianceIcon size={28} name={device.name} />
             </span>
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -267,17 +276,17 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
               <svg viewBox="0 0 260 160" aria-hidden="true">
                 <defs>
                   <linearGradient id="powerGaugeGradient" x1="0" y1="1" x2="1" y2="0">
-                    <stop offset="0" stopColor="#f0d441" />
-                    <stop offset=".55" stopColor="#a9e746" />
-                    <stop offset="1" stopColor="#54d276" />
+                    <stop offset="0" stopColor="#a0d4e5" />
+                    <stop offset="1" stopColor="#ffe080" />
                   </linearGradient>
                 </defs>
                 <path className="power-gauge-track" d="M 25 140 A 105 105 0 0 1 235 140" />
-                <path className="power-gauge-fill" d="M 25 140 A 105 105 0 0 1 235 140" />
+                <path className="power-gauge-fill" d="M 25 140 A 105 105 0 0 1 235 140" pathLength={100}
+                  style={{ strokeDasharray: 100, strokeDashoffset: 100 - Math.min(100, (powerW ?? 0) / (Math.max(1, device.ratedCurrentA) * (device.state?.voltageV || 230)) * 100) }} />
               </svg>
               <div className="text-center">
                 <p className="power-gauge-caption">{t("power")}</p>
-                <p className="power-gauge-value">{number.format(device.state?.powerW ?? 0)}<small>W</small></p>
+                <p className="power-gauge-value">{powerW == null ? "—" : number.format(powerW)}<small>W</small></p>
               </div>
             </div>
             <div className="mt-7 flex flex-col items-center">
@@ -285,7 +294,8 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
                 appearance="hero"
                 deviceId={device.id}
                 initialState={device.state?.relayState ?? false}
-                demo={false}
+                demo={demoMode()}
+                unavailable={demoMode() && device.state?.connectionStatus !== "ONLINE"}
                 onConfirmed={() => void load(true)}
               />
               <p className="mt-3 text-center text-[.72rem] text-white/55">{t("confirmedRelay")} · {t("confirmedNotice")}</p>
@@ -327,10 +337,16 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
                 {t("sevenDayTotal")}: {number.format(energy?.energyKwh ?? 0)}{" "}
                 kWh
               </p>
+              {energy?.estimatedCost != null && (
+                <p className="mt-2 text-sm font-bold text-[#315f72]">
+                  {locale === "th" ? "ค่าไฟ 7 วันโดยประมาณ" : "7-day estimated cost"}{" · "}
+                  {new Intl.NumberFormat(locale, { style: "currency", currency: energy.currency ?? "THB" }).format(energy.estimatedCost)}
+                </p>
+              )}
             </div>
             <Link
               href="/energy"
-              className="rounded-xl bg-[#edf7ef] px-3 py-2 text-xs font-bold text-[#187b36]"
+              className="rounded-xl bg-[#e6f2f6] px-3 py-2 text-xs font-bold text-[#315f72]"
             >
               {t("allEnergy")}
             </Link>
@@ -348,7 +364,7 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
         <div className="space-y-5">
           <section className="panel p-5 md:p-6">
             <div className="flex items-center gap-3">
-              <span className="grid size-10 place-items-center rounded-xl bg-[#eaf7ed] text-[#218d40]">
+              <span className="grid size-10 place-items-center rounded-xl bg-[#e2f0f5] text-[#218d40]">
                 <CalendarClock size={19} />
               </span>
               <div>
@@ -371,7 +387,7 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
             )}
             <Link
               href="/schedules"
-              className="mt-4 inline-flex text-sm font-bold text-[#187b36]"
+              className="mt-4 inline-flex text-sm font-bold text-[#315f72]"
             >
               {t("manageSchedules")}
             </Link>

@@ -70,13 +70,13 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       </section>
       <section className="auth-content flex items-center justify-center px-5 py-10 md:px-10">
         <div className="w-full max-w-md">
-          <div className="mb-8 flex items-center justify-between lg:justify-end"><div className="flex items-center gap-2 font-black lg:hidden"><span className="grid size-9 place-items-center rounded-xl bg-[#249c45] text-white"><Zap size={18} fill="currentColor"/></span>{locale === "th" ? "บ้านประหยัด" : "Baan Prayat"}</div><LanguageSwitcher /></div>
+          <div className="mb-8 flex items-center justify-between lg:justify-end"><div className="flex items-center gap-2 font-black lg:hidden"><span className="grid size-9 place-items-center rounded-xl bg-[#39748a] text-white"><Zap size={18} fill="currentColor"/></span>{locale === "th" ? "บ้านประหยัด" : "Baan Prayat"}</div><LanguageSwitcher /></div>
           <p className="text-xs font-bold tracking-[.16em] text-[#218f41]">{mode === "login" ? "WELCOME BACK" : "GET STARTED"}</p>
           <h2 className="mt-3 text-4xl font-black tracking-[-.04em]">{t(mode)}</h2>
           <form action={submit} className="mt-8 space-y-4">
-            {mode === "register" ? <label className="block"><span className="mb-2 block text-sm font-bold">{t("name")}</span><span className="flex items-center gap-3 rounded-2xl border border-[#dce5dd] bg-white px-4"><UserRound size={18} className="text-[#7a857d]"/><input required name="displayName" autoComplete="name" className="h-13 min-w-0 flex-1 outline-none" /></span></label> : null}
-            <label className="block"><span className="mb-2 block text-sm font-bold">{t("email")}</span><span className="flex items-center gap-3 rounded-2xl border border-[#dce5dd] bg-white px-4"><Mail size={18} className="text-[#7a857d]"/><input required type="email" name="email" autoComplete="email" className="h-13 min-w-0 flex-1 outline-none" /></span></label>
-            <label className="block"><span className="mb-2 block text-sm font-bold">{t("password")}</span><span className="flex items-center gap-3 rounded-2xl border border-[#dce5dd] bg-white px-4"><LockKeyhole size={18} className="text-[#7a857d]"/><input required minLength={8} type="password" name="password" autoComplete={mode === "login" ? "current-password" : "new-password"} className="h-13 min-w-0 flex-1 outline-none" /></span></label>
+            {mode === "register" ? <label className="block"><span className="mb-2 block text-sm font-bold">{t("name")}</span><span className="flex items-center gap-3 rounded-2xl border border-[#d1e1e8] bg-white px-4"><UserRound size={18} className="text-[#7a857d]"/><input required name="displayName" autoComplete="name" className="h-13 min-w-0 flex-1 outline-none" /></span></label> : null}
+            <label className="block"><span className="mb-2 block text-sm font-bold">{t("email")}</span><span className="flex items-center gap-3 rounded-2xl border border-[#d1e1e8] bg-white px-4"><Mail size={18} className="text-[#7a857d]"/><input required type="email" name="email" autoComplete="email" className="h-13 min-w-0 flex-1 outline-none" /></span></label>
+            <label className="block"><span className="mb-2 block text-sm font-bold">{t("password")}</span><span className="flex items-center gap-3 rounded-2xl border border-[#d1e1e8] bg-white px-4"><LockKeyhole size={18} className="text-[#7a857d]"/><input required minLength={8} type="password" name="password" autoComplete={mode === "login" ? "current-password" : "new-password"} className="h-13 min-w-0 flex-1 outline-none" /></span></label>
             {mode === "login" ? (
               <div className="text-right">
                 <Link className="text-sm font-bold text-[#1c8b3d] underline-offset-4 hover:underline" href="/auth/forgot-password">
@@ -86,7 +86,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             ) : null}
             {error ? <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
             {notice ? <p role="status" className="rounded-xl bg-green-50 p-3 text-sm text-green-800">{notice}</p> : null}
-            <button disabled={pending} className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#209842] font-bold text-white shadow-lg shadow-green-900/15 transition hover:bg-[#167b34] disabled:opacity-60">{pending ? <LoaderCircle className="animate-spin" size={19}/> : null}{t(mode === "login" ? "submitLogin" : "submitRegister")}<ArrowRight size={18}/></button>
+            <button disabled={pending} className="flex h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#285b70] font-bold text-white shadow-lg shadow-green-900/15 transition hover:bg-[#167b34] disabled:opacity-60">{pending ? <LoaderCircle className="animate-spin" size={19}/> : null}{t(mode === "login" ? "submitLogin" : "submitRegister")}<ArrowRight size={18}/></button>
           </form>
           <p className="mt-6 text-center text-sm text-[#69746c]">{t(mode === "login" ? "noAccount" : "hasAccount")} <Link className="font-bold text-[#1c8b3d] underline-offset-4 hover:underline" href={mode === "login" ? "/auth/register" : "/auth/login"}>{t(mode === "login" ? "register" : "login")}</Link></p>
         </div>

@@ -44,8 +44,8 @@ export function EnergyChart({
         >
           <defs>
             <linearGradient id="energyFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#40b65d" />
-              <stop offset="1" stopColor="#258f45" />
+              <stop offset="0" stopColor="#76a8bb" />
+              <stop offset="1" stopColor="#518295" />
             </linearGradient>
           </defs>
           <CartesianGrid

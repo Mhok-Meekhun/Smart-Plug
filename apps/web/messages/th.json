@@ -1,5 +1,5 @@
 {
-  "Common": {"appName":"บ้านประหยัด","loading":"กำลังโหลด","retry":"ลองอีกครั้ง","estimated":"ประมาณการ"},
+  "Common": {"appName":"RUAN AI Smart Home","loading":"กำลังโหลด","retry":"ลองอีกครั้ง","estimated":"ประมาณการ"},
   "Nav": {"dashboard":"หน้าหลัก","devices":"อุปกรณ์","energy":"พลังงาน","schedules":"ตารางเวลา","settings":"ตั้งค่า"},
   "Dashboard": {
     "eyebrow":"พลังงานภายในบ้านแบบสด","greeting":"สวัสดีตอนเย็น","title":"บ้านของคุณใช้พลังงานได้อย่างมีประสิทธิภาพ",

@@ -5,6 +5,11 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**"]
     },
+    "@smart-home/web#build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**"],
+      "env": ["NEXT_PUBLIC_DEMO_MODE"]
+    },
     "test": {
       "dependsOn": ["^build"]
     },
