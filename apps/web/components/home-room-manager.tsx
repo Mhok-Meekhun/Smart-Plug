@@ -1,9 +1,12 @@
 "use client";
 
-import { DoorOpen, House, LoaderCircle, Plus, ShieldCheck } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { ArrowUpRight, DoorOpen, House, LoaderCircle, Plus, ShieldCheck } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { FormEvent, useCallback, useEffect, useState, useTransition } from "react";
 import { apiRequest } from "../lib/api-client";
+import { Link } from "../i18n/navigation";
+import { roomCategories, roomKind, roomName } from "../lib/rooms";
+import { ApplianceIcon } from "./appliance-icon";
 
 type Home = {
   id: string;
@@ -22,11 +25,16 @@ type Room = {
   _count: { devices: number };
 };
 
+type RoomAppliance = { id: string; homeId: string; roomId: string | null; name: string };
+
 export function HomeRoomManager() {
   const t = useTranslations("HomeRooms");
+  const locale = useLocale();
+  const thai = locale === "th";
   const [homes, setHomes] = useState<Home[]>([]);
   const [homeId, setHomeId] = useState("");
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [appliances, setAppliances] = useState<RoomAppliance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
@@ -51,8 +59,15 @@ export function HomeRoomManager() {
     if (!homeId) { setRooms([]); return; }
     let active = true;
     setLoading(true);
-    apiRequest<Room[]>(`/v1/homes/${homeId}/rooms`)
-      .then((values) => active && setRooms(values))
+    Promise.all([
+      apiRequest<Room[]>(`/v1/homes/${homeId}/rooms`),
+      apiRequest<RoomAppliance[]>(`/v1/devices?homeId=${encodeURIComponent(homeId)}`),
+    ])
+      .then(([values, items]) => {
+        if (!active) return;
+        setRooms(values);
+        setAppliances(items.filter((item) => item.homeId === homeId));
+      })
       .catch(() => active && setError(t("loadFailed")))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
@@ -86,7 +101,10 @@ export function HomeRoomManager() {
       try {
         await apiRequest<Room>(`/v1/homes/${homeId}/rooms`, {
           method: "POST",
-          body: JSON.stringify({ name: String(data.get("roomName") ?? "") })
+          body: JSON.stringify({
+            name: String(data.get("roomName") ?? ""),
+            ...(data.get("roomType") ? { icon: data.get("roomType") } : {}),
+          })
         });
         setRooms(await apiRequest<Room[]>(`/v1/homes/${homeId}/rooms`));
         await loadHomes(homeId);
@@ -114,8 +132,49 @@ export function HomeRoomManager() {
         <div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t("rooms")}</h2><p className="mt-1 text-sm text-[#5d6b71]">{selectedHome?.name ?? t("noHome")}</p></div>{loading ? <LoaderCircle className="animate-spin text-[#278f43]" size={20}/> : null}</div>
         {!loading && !homeId ? <div className="mt-8 rounded-3xl border border-dashed border-[#bcd6c1] bg-[#eff8f1] p-7 text-center text-sm font-semibold text-[#39764a]">{t("createHomeFirst")}</div> : null}
         {!loading && homeId && rooms.length === 0 ? <div className="mt-8 rounded-3xl border border-dashed border-[#bcd6c1] bg-[#eff8f1] p-7 text-center text-sm font-semibold text-[#39764a]">{t("empty")}</div> : null}
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">{rooms.map((room) => <article key={room.id} className="flex items-center gap-3 rounded-2xl border border-[#dfe7e0] bg-white p-4"><span className="grid size-10 place-items-center rounded-xl bg-[#f0f6f1] text-[#258b40]"><DoorOpen size={19}/></span><div><h3 className="font-black">{room.name}</h3><p className="text-xs text-[#748078]">{t("deviceCount", { count: room._count.devices })}</p></div></article>)}</div>
-        {homeId ? <form onSubmit={createRoom} className="mt-7 border-t border-[#e3e9e4] pt-6"><label><span className="mb-2 block text-sm font-bold">{t("newRoom")}</span><div className="flex gap-3"><input required name="roomName" maxLength={120} placeholder={t("roomPlaceholder")} className="h-12 min-w-0 flex-1 rounded-2xl border border-[#d1e1e8] px-4"/><button disabled={pending} className="inline-flex h-12 shrink-0 items-center gap-2 rounded-2xl bg-[#285b70] px-5 font-bold text-white disabled:opacity-60">{pending ? <LoaderCircle className="animate-spin" size={17}/> : <Plus size={17}/>}<span className="hidden sm:inline">{t("addRoom")}</span></button></div></label><div className="mt-4 flex gap-2 rounded-2xl bg-[#f4f7f4] p-3 text-xs leading-5 text-[#5d6c62]"><ShieldCheck className="mt-0.5 shrink-0" size={16}/>{t("ownerNotice")}</div></form> : null}
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {rooms.map((room) => {
+            const items = appliances.filter((item) => item.roomId === room.id);
+            return <article key={room.id} className="room-directory-card" data-room={roomKind(room)}>
+              <Link href={{ pathname: "/devices", query: { room: room.id } }} className="flex min-h-11 items-center gap-3">
+                <DoorOpen size={19} className="shrink-0 text-[#315f72]" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <strong className="block">{roomName(room, locale)}</strong>
+                  <small className="text-[#5d6b71]">{t("deviceCount", { count: room._count.devices })}</small>
+                </span>
+                <ArrowUpRight size={16} className="shrink-0" aria-hidden="true" />
+              </Link>
+              {items.length > 0 && <ul className="mt-2 space-y-1">
+                {items.map((item) => <li key={item.id}>
+                  <Link href={`/devices/${item.id}`} className="floor-device">
+                    <ApplianceIcon name={item.name} size={38} />
+                    <strong>{item.name}</strong>
+                  </Link>
+                </li>)}
+              </ul>}
+            </article>;
+          })}
+        </div>
+        {homeId && <form onSubmit={createRoom} className="mt-7 border-t border-[#d7e5eb] pt-6">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label><span className="mb-2 block text-sm font-bold">{t("newRoom")}</span>
+              <input required name="roomName" maxLength={120} placeholder={t("roomPlaceholder")} className="h-12 w-full rounded-xl border border-[#d1e1e8] px-4" />
+            </label>
+            <label><span className="mb-2 block text-sm font-bold">{thai ? "ประเภทห้อง" : "Room type"}</span>
+              <select name="roomType" className="h-12 w-full rounded-xl border border-[#d1e1e8] bg-white px-3">
+                <option value="">{thai ? "ระบุจากชื่อห้อง" : "Infer from room name"}</option>
+                {roomCategories.map((category) => <option key={category.key} value={category.key}>{thai ? category.th : category.en}</option>)}
+              </select>
+            </label>
+          </div>
+          <button disabled={pending} className="ruan-action mt-3 disabled:opacity-60">
+            {pending ? <LoaderCircle className="animate-spin" size={17}/> : <Plus size={17}/>}
+            {t("addRoom")}
+          </button>
+          <div className="mt-4 flex gap-2 rounded-2xl bg-[#f0f6f8] p-3 text-xs leading-5 text-[#5d6b71]">
+            <ShieldCheck className="mt-0.5 shrink-0" size={16}/>{t("ownerNotice")}
+          </div>
+        </form>}
       </section>
     </div>
   </div>;

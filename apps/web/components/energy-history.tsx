@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "../i18n/navigation";
 import { apiRequest } from "../lib/api-client";
+import { ApplianceIcon } from "./appliance-icon";
 import { EnergyChart } from "./energy-chart";
 
 type Home = { id: string; name: string };
@@ -120,7 +121,7 @@ export function EnergyHistory() {
             return (
               <li key={device.id}>
                 <Link className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3.5 hover:text-[#315f72]" href={`/devices/${device.id}`}>
-                  <span className="flex items-center gap-3 font-bold"><PlugZap size={18} className="shrink-0 text-[#518295]" aria-hidden="true" />{device.name}</span>
+                  <span className="flex items-center gap-3 font-bold"><ApplianceIcon name={device.name} size={42} />{device.name}</span>
                   <span className="text-right">
                     <strong className="block tabular-nums">{number.format(usage)} kWh</strong>
                     {cost != null && <small className="text-[#5d6b71]">{locale === "th" ? "ประมาณ" : "Est."} {money.format(cost)}</small>}

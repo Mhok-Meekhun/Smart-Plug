@@ -20,11 +20,14 @@ import { createClient } from "../lib/supabase/client";
 import { EnergyChart } from "./energy-chart";
 import { PowerToggle } from "./power-toggle";
 import { ApplianceIcon } from "./appliance-icon";
+import { HomeFloorPlan } from "./home-floor-plan";
+import { roomName, type RoomSummary } from "../lib/rooms";
 
 type Home = { id: string; name: string; currency: string };
 type Device = {
   id: string;
   homeId: string;
+  roomId: string | null;
   name: string;
   type: string;
   room: { name: string } | null;
@@ -59,6 +62,7 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
   const [homes, setHomes] = useState<Home[]>([]);
   const [selectedHomeId, setSelectedHomeId] = useState("");
   const [devices, setDevices] = useState<Device[]>([]);
+  const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [energy, setEnergy] = useState<EnergyResponse>();
   const [loading, setLoading] = useState(true);
@@ -105,9 +109,15 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
             from: from.toISOString(),
             to: to.toISOString(),
           });
-          setEnergy(await apiRequest<EnergyResponse>(`/v1/energy?${query}`));
+          const [usage, homeRooms] = await Promise.all([
+            apiRequest<EnergyResponse>(`/v1/energy?${query}`),
+            apiRequest<RoomSummary[]>(`/v1/homes/${homeId}/rooms`),
+          ]);
+          setEnergy(usage);
+          setRooms(homeRooms);
         } else {
           setEnergy(undefined);
+          setRooms([]);
         }
         setUpdatedAt(new Date());
       } catch {
@@ -239,62 +249,27 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
           </button>
         </div>
       ) : null}
-      <section className="reference-hero dashboard-hero px-6 py-8 text-white md:px-10 md:py-10">
-        <div
-          className="absolute -right-20 -top-28 size-80 rounded-full border-[58px] border-white/5"
-          aria-hidden="true"
-        />
-        <div className="relative grid gap-8 xl:grid-cols-[1.2fr_.8fr] xl:items-end">
-          <div>
-            <p className="text-xs font-bold tracking-[.18em] text-[#ffe080]">
-              <House size={15} className="mr-2 inline" aria-hidden="true" />
-              {homes.length > 1 ? (
-                <select aria-label={locale === "th" ? "เลือกบ้าน" : "Select home"} value={homeId} onChange={(event) => setSelectedHomeId(event.target.value)} className="rounded-lg border border-white/30 bg-[#285b70] px-2 py-1">
-                  {homes.map((home) => <option value={home.id} key={home.id}>{home.name}</option>)}
-                </select>
-              ) : activeHome?.name ?? t("eyebrow")}
-            </p>
-            <h1 className="mt-4 max-w-3xl text-3xl font-black leading-tight tracking-[-.04em] md:text-5xl">
-              {t("title")}
-            </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/70 md:text-base">
-              {t("subtitle")}
-            </p>
-            <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-xs font-semibold text-white/80">
-              <Activity size={15} />
-              {demo ? `${t("demo")} · ` : ""}
-              {updatedAt
-                ? t("updatedAt", { value: dateTime.format(updatedAt) })
-                : t("updated")}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="glass-stat p-5">
-              <div className="flex items-center gap-2 text-xs text-white/65">
-                <Zap size={16} />
-                {t("livePower")}
-              </div>
-              <div className="metric-number mt-3 text-4xl font-black">
-                {number.format(totalPower)}{" "}
-                <span className="text-base font-semibold text-white/60">W</span>
-              </div>
-            </div>
-            <div className="glass-stat p-5">
-              <div className="flex items-center gap-2 text-xs text-white/65">
-                <Wifi size={16} />
-                {t("online")}
-              </div>
-              <div className="metric-number mt-3 text-4xl font-black">
-                {onlineCount}
-                <span className="text-base font-semibold text-white/60">
-                  /{devices.length}
-                </span>
-              </div>
-            </div>
-          </div>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-bold text-[#315f72]">
+            <House size={17} aria-hidden="true" />
+            {homes.length > 1 ? (
+              <select aria-label={locale === "th" ? "เลือกบ้าน" : "Select home"} value={homeId} onChange={(event) => setSelectedHomeId(event.target.value)} className="rounded-lg border border-[#c9dce5] bg-white px-2 py-1">
+                {homes.map((home) => <option value={home.id} key={home.id}>{home.name}</option>)}
+              </select>
+            ) : activeHome?.name ?? t("eyebrow")}
+          </p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">
+            {locale === "th" ? "ภาพรวมบ้าน" : "Home overview"}
+          </h1>
         </div>
-      </section>
-
+        <div className="panel min-w-36 px-4 py-3">
+          <p className="flex items-center gap-2 text-xs font-bold text-[#315f72]"><Zap size={16} aria-hidden="true" />{t("livePower")}</p>
+          <p className="metric-number mt-1 text-2xl font-black">{number.format(totalPower)} <small className="text-sm">W</small></p>
+        </div>
+      </header>
+      <HomeFloorPlan rooms={rooms} devices={devices} locale={locale} />
+      {updatedAt && <p className="mt-2 text-xs text-[#5d6b71]">{t("updatedAt", { value: dateTime.format(updatedAt) })}</p>}
       <nav className="ruan-shortcuts mt-6" aria-label={locale === "th" ? "ทางลัด" : "Shortcuts"}>
         {([
           ["/devices", PlugZap, "อุปกรณ์และการควบคุม", "Devices & controls"],
@@ -406,7 +381,7 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
                         {device.name}
                       </Link>
                       <p className="mt-1 truncate text-xs text-[#7b857d]">
-                        {device.room?.name ?? "—"}
+                        {device.room ? roomName(device.room, locale) : "—"}
                       </p>
                       <div className="mt-3 flex items-center gap-2">
                         <span className={`status-dot ${online ? "is-online" : ""}`} />

@@ -26,6 +26,8 @@ import {
 } from "react";
 import { Link } from "../i18n/navigation";
 import { apiRequest } from "../lib/api-client";
+import { roomName } from "../lib/rooms";
+import { ApplianceIcon } from "./appliance-icon";
 import { demoMode } from "../lib/supabase/config";
 
 type Device = {
@@ -256,7 +258,7 @@ export function ScheduleManager() {
               {devices.map((device) => (
                 <option key={device.id} value={device.id}>
                   {device.name}
-                  {device.room ? ` · ${device.room.name}` : ""}
+                  {device.room ? ` · ${roomName(device.room, locale)}` : ""}
                 </option>
               ))}
             </select>
@@ -417,11 +419,11 @@ export function ScheduleManager() {
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-[#748078]">
-                      {schedule.device.name}
+                      <ApplianceIcon name={schedule.device.name} size={32} /> {schedule.device.name}
                       {schedule.device.room ? (
                         <>
                           <MapPin className="mx-1 inline" size={12} />
-                          {schedule.device.room.name}
+                          {roomName(schedule.device.room, locale)}
                         </>
                       ) : null}
                     </p>

@@ -1,5 +1,98 @@
 @import "tailwindcss";
 
+.appliance-render {
+  display: inline-block;
+  flex: none;
+  background-image: url("/ruan-appliances-3d.png");
+  background-repeat: no-repeat;
+  background-size: 300% 300%;
+}
+.floor-plan-key { display: flex; flex-wrap: wrap; gap: .9rem; margin-bottom: .7rem; font-size: .75rem; color: #4f6570; }
+.floor-plan-key span, .floor-device small { display: flex; align-items: center; gap: .35rem; }
+.floor-plan-key i, .floor-device i { display: inline-block; width: .55rem; height: .55rem; flex: none; border-radius: 50%; }
+i[data-state="active"] { background: #278453; }
+i[data-state="off"] { background: #627e8b; }
+i[data-state="offline"] { background: transparent; border: 1px dashed #746354; }
+.floor-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #42606c;
+  box-shadow: 0 9px 24px #233e4a21;
+}
+.floor-room {
+  --floor: #e4eff5;
+  --tile: #6b8b9819;
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  min-height: 10.5rem;
+  padding: .7rem .65rem 1.25rem;
+  background-color: var(--floor);
+  background-image: linear-gradient(var(--tile) 1px, transparent 1px), linear-gradient(90deg, var(--tile) 1px, transparent 1px);
+  background-size: 13px 13px;
+}
+.floor-room::after {
+  position: absolute;
+  bottom: -4px;
+  right: 10%;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #6b8793;
+  border-bottom: 0;
+  border-right: 0;
+  border-radius: 100% 0 0 0;
+  background: linear-gradient(to top, #f1f6f8 4px, transparent 4px);
+  content: "";
+  pointer-events: none;
+}
+.floor-room[data-room="living"], .floor-room[data-room="bedroom"], .floor-room[data-room="dining"] {
+  --floor: #f1e9dc;
+  --tile: #ad8d6822;
+  background-image: repeating-linear-gradient(0deg, transparent 0 9px, var(--tile) 9px 10px);
+  background-size: auto;
+}
+.floor-room[data-room="bedroom"] { --floor: #ede7f4; --tile: #876c9924; }
+.floor-room[data-room="dining"] { --floor: #f5ecda; }
+.floor-room[data-room="laundry"] { --floor: #e5efe9; }
+.room-directory-card { border: 1px solid #d7e5eb; border-radius: 1rem; padding: .8rem; background: #eaf2f6; }
+.room-directory-card[data-room="living"], .room-directory-card[data-room="dining"],
+.device-icon[data-room="living"], .device-icon[data-room="dining"] { background: #f5ecda; }
+.room-directory-card[data-room="bedroom"], .device-icon[data-room="bedroom"] { background: #ede7f4; }
+.room-directory-card[data-room="laundry"], .device-icon[data-room="laundry"] { background: #e5efe9; }
+.floor-room-heading { position: relative; margin-bottom: .55rem; }
+.floor-room-heading h3 { font-weight: 850; font-size: .9rem; color: #243d49; overflow-wrap: anywhere; }
+.floor-room-heading a { text-decoration: underline; text-underline-offset: .18rem; }
+.floor-room-heading small { color: #526772; font-size: .7rem; }
+.room-furniture { position: absolute; right: .65rem; bottom: 1.5rem; display: flex; gap: 3px; align-items: center; z-index: -1; opacity: .55; }
+.room-furniture span { border: 1px solid #718c97; border-radius: 3px; background: #b5cbd4; }
+.room-furniture span:nth-child(1) { width: 36px; height: 22px; }
+.room-furniture span:nth-child(2), .room-furniture span:nth-child(3) { width: 13px; height: 13px; }
+.floor-room[data-room="bedroom"] .room-furniture { flex-direction: column; }
+.floor-room[data-room="bedroom"] .room-furniture span:first-child { width: 36px; height: 43px; border-top: 11px double #faf5fc; background: #b5accd; }
+.floor-room[data-room="bedroom"] .room-furniture span:not(:first-child) { display: none; }
+.floor-room[data-room="kitchen"] .room-furniture span:first-child { width: 65px; height: 18px; background: repeating-linear-gradient(90deg,#cfdee5 0 15px,#8da8b4 15px 16px); }
+.floor-room[data-room="bathroom"] .room-furniture span:first-child { width: 22px; height: 40px; border-radius: 8px; background: #fafcfd; }
+.floor-room[data-room="bathroom"] .room-furniture span:nth-child(2) { border-radius: 100%; background: #fafcfd; }
+.floor-room[data-room="dining"] .room-furniture span:first-child { width: 48px; height: 28px; border-radius: 40%; background: #c8a77e; }
+.floor-device-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr)); gap: .35rem; }
+.floor-device { display: flex; align-items: center; gap: .25rem; min-height: 48px; padding: .2rem .3rem; border: 1px solid #ffffffc9; border-radius: .65rem; background: #fcfefff0; color: #243d49; }
+.floor-device:hover { background: #fff; border-color: #699baf; }
+.floor-device strong { display: block; font-size: .75rem; overflow-wrap: anywhere; }
+.floor-device small, .floor-room-empty { color: #4f6570; font-size: .65rem; }
+@media (min-width: 740px) {
+  .floor-plan-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .floor-room { padding: .9rem .85rem 1.35rem; }
+  .floor-room-heading h3 { font-size: 1rem; }
+  .floor-room .floor-device-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr)); }
+}
+@media (max-width: 390px) {
+  .floor-device .appliance-render { max-width: 32px; max-height: 32px; }
+  .floor-device small { flex-wrap: wrap; }
+}
+
 .ruan-demo-notice {
   display: flex;
   align-items: baseline;

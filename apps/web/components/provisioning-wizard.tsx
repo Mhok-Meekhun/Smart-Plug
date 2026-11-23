@@ -1,7 +1,8 @@
 "use client";
 
 import { Check, Clipboard, House, LoaderCircle, Router, ShieldCheck, Smartphone, Wifi } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { roomName } from "../lib/rooms";
 import { FormEvent, useEffect, useState, useTransition } from "react";
 import { Link, useRouter } from "../i18n/navigation";
 import { apiRequest } from "../lib/api-client";
@@ -18,6 +19,7 @@ type ClaimResult = {
 
 export function ProvisioningWizard() {
   const t = useTranslations("Provisioning");
+  const locale = useLocale();
   const router = useRouter();
   const [mode, setMode] = useState<"virtual" | "physical">("virtual");
   const [homes, setHomes] = useState<Home[]>([]);
@@ -112,7 +114,7 @@ export function ProvisioningWizard() {
         {mode === "virtual" ? <div className="mt-4"><button type="button" onClick={createVirtualCode} disabled={pending} className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-[#b9d9c0] bg-[#eff8f1] font-bold text-[#1c7e38] disabled:opacity-60">{pending ? <LoaderCircle className="animate-spin" size={18}/> : <Router size={18}/>} {pairing ? t("replaceCode") : t("generateCode")}</button>{pairing ? <p className="mt-2 text-center text-xs text-[#748078]">{t("expires", { value: new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(new Date(pairing.expiresAt)) })}</p> : null}</div> : <p className="mt-3 text-sm leading-6 text-[#5d6b71]">{t("physicalCodeHelp")}</p>}
         <label className="mt-5 block"><span className="mb-2 block text-sm font-bold">{t("codeLabel")}</span><div className="flex rounded-2xl border border-[#d1e1e8] bg-white px-4"><input required value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} minLength={16} maxLength={24} autoComplete="one-time-code" placeholder="ABCD-EF01-2345-6789" className="h-12 min-w-0 flex-1 font-mono tracking-[.08em] outline-none"/><button type="button" onClick={copyCode} aria-label={t("copy")} className="px-2 text-[#67736a]"><Clipboard size={18}/></button></div>{copied ? <span role="status" className="mt-2 block text-xs font-bold text-[#218740]">{t("copied")}</span> : null}</label>
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2"><label><span className="mb-2 block text-sm font-bold">{t("home")}</span><select value={homeId} onChange={(event) => setHomeId(event.target.value)} className="h-12 w-full rounded-2xl border border-[#d1e1e8] bg-white px-4">{homes.map((home) => <option key={home.id} value={home.id}>{home.name}</option>)}</select></label><label><span className="mb-2 block text-sm font-bold">{t("room")}</span><select required value={roomId} onChange={(event) => setRoomId(event.target.value)} className="h-12 w-full rounded-2xl border border-[#d1e1e8] bg-white px-4"><option value="">{t("selectRoom")}</option>{rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label></div>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2"><label><span className="mb-2 block text-sm font-bold">{t("home")}</span><select value={homeId} onChange={(event) => setHomeId(event.target.value)} className="h-12 w-full rounded-2xl border border-[#d1e1e8] bg-white px-4">{homes.map((home) => <option key={home.id} value={home.id}>{home.name}</option>)}</select></label><label><span className="mb-2 block text-sm font-bold">{t("room")}</span><select required value={roomId} onChange={(event) => setRoomId(event.target.value)} className="h-12 w-full rounded-2xl border border-[#d1e1e8] bg-white px-4"><option value="">{t("selectRoom")}</option>{rooms.map((room) => <option key={room.id} value={room.id}>{roomName(room, locale)}</option>)}</select></label></div>
         <label className="mt-4 block"><span className="mb-2 block text-sm font-bold">{t("deviceName")}</span><input required name="name" maxLength={120} placeholder={t("namePlaceholder")} className="h-12 w-full rounded-2xl border border-[#d1e1e8] px-4"/></label>
         {error ? <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
         <button disabled={pending || !code || !roomId} className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#285b70] font-bold text-white disabled:opacity-50">{pending ? <LoaderCircle className="animate-spin" size={18}/> : <ShieldCheck size={18}/>} {t("claim")}</button>

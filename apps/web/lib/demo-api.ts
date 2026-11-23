@@ -1,3 +1,5 @@
+import { roomCategories } from "./rooms";
+
 type Home = { id: string; name: string; timezone: string; currency: string };
 type Room = { id: string; homeId: string; name: string; icon: string | null; sortOrder: number };
 type Appliance = {
@@ -13,6 +15,7 @@ type Schedule = {
 };
 type Tariff = { id: string; homeId: string; name: string; currency: string; flatRatePerKwh: number; updatedAt: string };
 type DemoData = {
+  layoutVersion?: number;
   startedAt: number;
   tick: number;
   homes: Home[];
@@ -34,10 +37,9 @@ const dayKey = (time: number) => iso(time + bangkokOffset).slice(0, 10);
 const dayStart = (day: string) => Date.parse(`${day}T00:00:00+07:00`);
 let memory: DemoData | undefined;
 
-function seed(now: number): DemoData {
-  const home = { id: "demo-home", name: "Ruan Residence", timezone, currency: "THB" };
-  const rooms = ["Living room", "Bedroom", "Kitchen"].map((name, sortOrder) => ({
-    id: `demo-room-${sortOrder}`, homeId: home.id, name, icon: null, sortOrder,
+function demoLayout(now: number) {
+  const rooms = roomCategories.map(({ en, key }, sortOrder) => ({
+    id: `demo-room-${sortOrder}`, homeId: "demo-home", name: en, icon: key, sortOrder,
   }));
   const appliances = [
     ["demo-tv", "Smart TV", 0, 65, true, true],
@@ -45,12 +47,21 @@ function seed(now: number): DemoData {
     ["demo-lamp", "Floor lamp", 0, 12, true, false],
     ["demo-fridge", "Refrigerator", 2, 106, true, true],
     ["demo-kettle", "Electric kettle", 2, 1500, false, false],
+    ["demo-ac", "Air conditioner", 1, 850, true, false],
+    ["demo-microwave", "Microwave", 2, 1100, true, false],
+    ["demo-dining-light", "Dining lamp", 4, 18, true, false],
+    ["demo-washer", "Washing machine", 5, 450, true, false],
   ] as const;
+  const devices = appliances.map(([id, name, room, watts, online, relayState]) => ({
+    id, name, homeId: "demo-home", roomId: rooms[room]!.id, watts, online, relayState, createdAt: now,
+  }));
+  return { rooms, devices };
+}
+
+function seed(now: number): DemoData {
+  const home = { id: "demo-home", name: "Ruan Residence", timezone, currency: "THB" };
   return {
-    startedAt: now, tick: now, homes: [home], rooms,
-    devices: appliances.map(([id, name, room, watts, online, relayState]) => ({
-      id, name, homeId: home.id, roomId: rooms[room]!.id, watts, online, relayState, createdAt: now,
-    })),
+    layoutVersion: 2, startedAt: now, tick: now, homes: [home], ...demoLayout(now),
     schedules: [{
       id: "demo-evening", deviceId: "demo-tv", name: "TV bedtime", kind: "REPEATING",
       desiredRelayState: false, timezone, executeAt: null, localTime: "22:30",
@@ -65,11 +76,21 @@ function seed(now: number): DemoData {
 }
 
 function read(now: number): DemoData {
+  let data: DemoData | undefined;
   try {
     const stored = localStorage.getItem(key);
-    if (stored) return JSON.parse(stored) as DemoData;
+    if (stored) data = JSON.parse(stored) as DemoData;
   } catch { /* Keep the demo usable when storage is unavailable. */ }
-  return memory ?? seed(now);
+  data ??= memory ?? seed(now);
+  if (data.layoutVersion !== 2) {
+    const layout = demoLayout(now);
+    const roomIds = new Set(data.rooms.map(({ id }) => id));
+    const deviceIds = new Set(data.devices.map(({ id }) => id));
+    data.rooms.push(...layout.rooms.filter(({ id }) => !roomIds.has(id)));
+    data.devices.push(...layout.devices.filter(({ id }) => !deviceIds.has(id)));
+    data.layoutVersion = 2;
+  }
+  return data;
 }
 
 function save(data: DemoData) {
@@ -127,6 +148,7 @@ function advance(data: DemoData, now: number) {
 function historicalUsage(data: DemoData, device: Appliance, day: string) {
   const hours: Record<string, number> = {
     "demo-tv": 3.5, "demo-fan": 7, "demo-lamp": 3, "demo-fridge": 8, "demo-kettle": 0.18,
+    "demo-ac": 1.9, "demo-microwave": 0.12, "demo-dining-light": 2.5, "demo-washer": 0.65,
   };
   const baseline = device.id.startsWith("demo-") && day <= dayKey(data.startedAt)
     ? device.watts / 1000 * (hours[device.id] ?? 0) * (0.72 + Number(day.slice(-2)) % 7 * 0.085)
@@ -232,7 +254,7 @@ export function demoRequest(path: string, init: RequestInit) {
       } else if (action === "rooms") {
         const home = findHome();
         if (method === "POST") {
-          const room = { id: crypto.randomUUID(), name: String(body.name).trim(), homeId: home.id, icon: null, sortOrder: data.rooms.length };
+          const room = { id: crypto.randomUUID(), name: String(body.name).trim(), homeId: home.id, icon: body.icon ?? null, sortOrder: data.rooms.length };
           data.rooms.push(room);
           result = room;
         } else {

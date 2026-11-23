@@ -17,9 +17,11 @@ import { apiRequest } from "../lib/api-client";
 import { demoMode } from "../lib/supabase/config";
 import { PowerToggle } from "./power-toggle";
 import { ApplianceIcon } from "./appliance-icon";
+import { roomKind, roomName, type RoomSummary } from "../lib/rooms";
 
 type Device = {
   id: string;
+  roomId: string | null;
   name: string;
   type: string;
   room: { name: string } | null;
@@ -33,14 +35,15 @@ type Device = {
   } | null;
 };
 
-export function DeviceList() {
+export function DeviceList({ initialRoomId = "" }: { initialRoomId?: string }) {
   const t = useTranslations("Devices");
   const deviceText = useTranslations("Device");
   const locale = useLocale();
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [room, setRoom] = useState("");
+  const [room, setRoom] = useState(initialRoomId);
+  const [catalog, setCatalog] = useState<RoomSummary[]>([]);
   const number = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 });
 
   const load = useCallback((background = false) => {
@@ -58,8 +61,21 @@ export function DeviceList() {
     const timer = setInterval(() => load(true), 5_000);
     return () => clearInterval(timer);
   }, [load]);
-  const rooms = [...new Set(devices.flatMap((device) => device.room ? [device.room.name] : []))];
-  const visibleDevices = devices.filter((device) => !room || device.room?.name === room);
+  useEffect(() => {
+    let active = true;
+    apiRequest<{ id: string }[]>("/v1/homes")
+      .then((homes) => Promise.all(homes.map(({ id }) => apiRequest<RoomSummary[]>(`/v1/homes/${id}/rooms`))))
+      .then((groups) => { if (active) setCatalog(groups.flat()); })
+      .catch(() => { /* Device room labels remain available. */ });
+    return () => { active = false; };
+  }, []);
+  const rooms = new Map(catalog.map((item) => [item.id, item]));
+  for (const device of devices) {
+    if (device.roomId && device.room && !rooms.has(device.roomId)) {
+      rooms.set(device.roomId, { id: device.roomId, ...device.room });
+    }
+  }
+  const visibleDevices = devices.filter((device) => !room || device.roomId === room);
 
   return (
     <main className="mx-auto max-w-6xl px-5 py-8 md:px-8 lg:px-10 lg:py-12">
@@ -122,9 +138,10 @@ export function DeviceList() {
 
       {!loading && !error && devices.length > 0 ? (
         <div className="ruan-filters mt-6" aria-label={locale === "th" ? "กรองตามห้อง" : "Filter by room"}>
-          {["", ...rooms].map((name) => (
-            <button key={name} type="button" aria-pressed={room === name} onClick={() => setRoom(name)}>
-              {name || (locale === "th" ? "ทุกห้อง" : "All rooms")}
+          <button type="button" aria-pressed={!room} onClick={() => setRoom("")}>{locale === "th" ? "ทุกห้อง" : "All rooms"}</button>
+          {[...rooms.values()].map((item) => (
+            <button key={item.id} type="button" aria-pressed={room === item.id} onClick={() => setRoom(item.id)}>
+              {roomName(item, locale)}
             </button>
           ))}
         </div>
@@ -132,13 +149,16 @@ export function DeviceList() {
 
       {!loading && !error && devices.length > 0 ? (
         <section className="stagger-in mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {visibleDevices.length === 0 && <p className="panel p-5 md:col-span-2 xl:col-span-3">
+            {locale === "th" ? "ยังไม่มีอุปกรณ์ในห้องนี้" : "No appliances in this room yet"}
+          </p>}
           {visibleDevices.map((device) => {
             const online = device.state?.connectionStatus === "ONLINE";
             const simulated = device.type === "SIMULATED_SMART_PLUG";
             return (
               <article key={device.id} className="device-card p-5 md:p-6">
                 <div className="flex items-start gap-4">
-                  <span className={`device-icon ${online ? "" : "is-off"}`}>
+                  <span className={`device-icon ${online ? "" : "is-off"}`} data-room={device.room ? roomKind(device.room) : "other"}>
                     <ApplianceIcon name={device.name} />
                   </span>
                   <div className="min-w-0 flex-1">
@@ -157,7 +177,7 @@ export function DeviceList() {
                     </div>
                     <p className="mt-1 flex items-center gap-1 text-xs text-[#78827a]">
                       <MapPin size={13} />
-                      {device.room?.name ?? t("noRoom")}
+                      {device.room ? roomName(device.room, locale) : t("noRoom")}
                     </p>
                   </div>
                   <PowerToggle

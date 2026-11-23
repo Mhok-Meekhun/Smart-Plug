@@ -9,7 +9,6 @@ import {
   Gauge,
   LoaderCircle,
   MapPin,
-  PlugZap,
   ShieldCheck,
   Wifi,
   WifiOff,
@@ -24,6 +23,7 @@ import { demoMode } from "../lib/supabase/config";
 import { EnergyChart } from "./energy-chart";
 import { PowerToggle } from "./power-toggle";
 import { ApplianceIcon } from "./appliance-icon";
+import { roomName } from "../lib/rooms";
 
 type Device = {
   id: string;
@@ -237,8 +237,8 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
       <section className="reference-hero mt-5 p-6 text-white md:p-9">
         <div className="grid items-center gap-8 lg:grid-cols-[1fr_minmax(17rem,.8fr)] lg:gap-12">
           <div className="flex items-start gap-4">
-            <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-white/10 text-[#8ee0a5]">
-              <ApplianceIcon size={28} name={device.name} />
+            <span className="grid size-18 shrink-0 place-items-center rounded-2xl bg-white/85">
+              <ApplianceIcon size={62} name={device.name} />
             </span>
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -253,7 +253,7 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
               </div>
               <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-white/65">
                 <MapPin size={15} />
-                {device.home.name} · {device.room?.name ?? t("noRoom")}
+                {device.home.name} · {device.room ? roomName(device.room, locale) : t("noRoom")}
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 <span
