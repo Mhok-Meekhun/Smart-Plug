@@ -20,6 +20,18 @@ interface DeviceRegistration {
   icon?: string | undefined;
 }
 
+function canUseRelayPilot(device: {
+  id: string;
+  firmwareVersion: string | null;
+  lifecycleStatus: string;
+  home: { members: { role: string }[] };
+}) {
+  return device.id === process.env.RELAY_PILOT_DEVICE_ID &&
+    device.lifecycleStatus === "ACTIVE" &&
+    device.firmwareVersion === "esp32-relay-pilot-1" &&
+    device.home.members.some(({ role }) => role === "OWNER");
+}
+
 @Injectable()
 export class DevicesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -38,7 +50,12 @@ export class DevicesService {
         ratedCurrentA: true,
         lifecycleStatus: true,
         createdAt: true,
-        home: { select: { name: true, timezone: true, currency: true } },
+        home: { select: {
+          name: true,
+          timezone: true,
+          currency: true,
+          members: { where: { userId }, select: { role: true } }
+        } },
         room: { select: { name: true } },
         telemetry: {
           orderBy: [{ deviceTimestamp: "desc" }, { serverReceivedAt: "desc" }],
@@ -65,9 +82,11 @@ export class DevicesService {
         messageKey: "errors.deviceNotFound",
       });
     }
-    const { telemetry, ...details } = device;
+    const { telemetry, home, ...details } = device;
     return {
       ...details,
+      home: { name: home.name, timezone: home.timezone, currency: home.currency },
+      relayPilotEnabled: device.type === "TELEMETRY_SMART_PLUG" && canUseRelayPilot(device),
       powerFactor: telemetry?.[0]?.powerFactor?.toNumber() ?? null,
       measurementReceivedAt: telemetry?.[0]?.serverReceivedAt ?? null,
       ratedCurrentA: device.ratedCurrentA.toNumber(),
@@ -238,7 +257,11 @@ export class DevicesService {
         id: deviceId,
         home: { members: { some: { userId } } },
       },
-      select: { id: true, type: true },
+      select: {
+        id: true, type: true, lifecycleStatus: true, firmwareVersion: true,
+        home: { select: { members: { where: { userId }, select: { role: true } } } },
+        state: { select: { connectionStatus: true, lastSeenAt: true } },
+      },
     });
     if (!device) {
       throw new NotFoundException({
@@ -247,7 +270,8 @@ export class DevicesService {
       });
     }
 
-    if (device.type === "TELEMETRY_SMART_PLUG") {
+    const pilot = device.type === "TELEMETRY_SMART_PLUG";
+    if (pilot && !canUseRelayPilot(device)) {
       throw new ConflictException({
         code: "RELAY_CONTROL_DISABLED",
         messageKey: "errors.relayControlDisabled",
@@ -268,7 +292,17 @@ export class DevicesService {
     }
 
     const requestedAt = new Date();
-    const expiresAt = new Date(requestedAt.getTime() + 30_000);
+    if (pilot && (
+      device.state?.connectionStatus !== "ONLINE" ||
+      !device.state.lastSeenAt ||
+      requestedAt.getTime() - device.state.lastSeenAt.getTime() >= 45_000
+    )) {
+      throw new ConflictException({
+        code: "RELAY_DEVICE_OFFLINE",
+        messageKey: "errors.relayDeviceOffline",
+      });
+    }
+    const expiresAt = new Date(requestedAt.getTime() + (pilot ? 10_000 : 30_000));
     if (device.type === "SIMULATED_SMART_PLUG") {
       const command = await this.prisma.$transaction(async (transaction) => {
         const created = await transaction.deviceCommand.create({
@@ -321,11 +355,25 @@ export class DevicesService {
     return this.commandResponse(command);
   }
 
+  async getRelayCommand(userId: string, deviceId: string, commandId: string) {
+    const command = await this.prisma.deviceCommand.findFirst({
+      where: { id: commandId, deviceId, device: { home: { members: { some: { userId } } } } },
+    });
+    if (!command) {
+      throw new NotFoundException({
+        code: "RELAY_COMMAND_NOT_FOUND",
+        messageKey: "errors.relayCommandNotFound",
+      });
+    }
+    return this.commandResponse(command);
+  }
+
   private commandResponse(command: {
     id: string;
     deviceId: string;
     desiredRelayState: boolean;
     status: string;
+    failureCode?: string | null;
     requestedAt: Date;
     expiresAt: Date;
   }) {
@@ -334,6 +382,7 @@ export class DevicesService {
       deviceId: command.deviceId,
       desiredRelayState: command.desiredRelayState,
       status: command.status,
+      failureCode: command.failureCode ?? null,
       requestedAt: command.requestedAt,
       expiresAt: command.expiresAt,
       confirmed: command.status === "ACKNOWLEDGED",

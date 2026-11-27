@@ -9,7 +9,8 @@ const environmentSchema = z.object({
   DATABASE_URL: z.string().url(),
   SUPABASE_URL: z.string().url(),
   SUPABASE_JWT_ISSUER: z.string().url().optional(),
-  SUPABASE_JWT_AUDIENCE: z.string().min(1).default("authenticated")
+  SUPABASE_JWT_AUDIENCE: z.string().min(1).default("authenticated"),
+  RELAY_PILOT_DEVICE_ID: z.uuid().optional()
 });
 
 export type AppEnvironment = z.infer<typeof environmentSchema>;

@@ -43,6 +43,7 @@ export class IotWorker {
   private readonly realtime: RealtimePublisher;
   private readonly mqtt: MqttClient;
   private stopping = false;
+  private mqttReady = false;
   private lastMaintenanceAt = 0;
 
   constructor(private readonly config: WorkerConfig) {
@@ -52,7 +53,8 @@ export class IotWorker {
       username: config.MQTT_USERNAME,
       password: config.MQTT_PASSWORD,
       clientId: config.MQTT_CLIENT_ID,
-      clean: false,
+      clean: config.RELAY_PILOT_ENABLED,
+      resubscribe: false,
       reconnectPeriod: 1_000,
       connectTimeout: 20_000,
       rejectUnauthorized: true,
@@ -65,14 +67,17 @@ export class IotWorker {
       this.log("info", "mqtt_connected");
       const base = `v1/devices/${this.config.TELEMETRY_ONLY ? this.config.MQTT_DEVICE_ID : "+"}`;
       const topics = [`${base}/telemetry`, `${base}/availability`];
-      if (!this.config.TELEMETRY_ONLY) topics.push(`${base}/state`, `${base}/acks`);
+      if (!this.config.TELEMETRY_ONLY || this.config.RELAY_PILOT_ENABLED) topics.push(`${base}/state`, `${base}/acks`);
       this.mqtt.subscribe(topics, { qos: 1 }, (error, subscriptions) => {
-        if (error || subscriptions?.some(({ qos }) => qos >= 128)) {
+        this.mqttReady = !error && this.mqtt.connected &&
+          subscriptions?.length === topics.length && subscriptions.every(({ qos }) => qos === 1);
+        if (!this.mqttReady) {
           this.log("error", "mqtt_subscription_failed", { topics, message: error?.message });
         }
       });
     });
-    this.mqtt.on("message", (topic, payload) => void this.handleMessage(topic, payload));
+    this.mqtt.on("close", () => { this.mqttReady = false; });
+    this.mqtt.on("message", (topic, payload, packet) => void this.handleMessage(topic, payload, packet.retain));
     this.mqtt.on("error", (error) => this.log("error", "mqtt_error", { message: error.message }));
     void this.runOutbox();
   }
@@ -86,12 +91,12 @@ export class IotWorker {
     await this.pool.end();
   }
 
-  private async handleMessage(topic: string, bytes: Buffer) {
+  private async handleMessage(topic: string, bytes: Buffer, retained: boolean) {
     const parsedTopic = parseDeviceTopic(topic);
     if (!parsedTopic || parsedTopic.kind === "commands") return;
-    if (this.config.TELEMETRY_ONLY &&
-        (parsedTopic.deviceId !== this.config.MQTT_DEVICE_ID ||
-         !["telemetry", "availability"].includes(parsedTopic.kind))) return;
+    if (this.config.TELEMETRY_ONLY && parsedTopic.deviceId !== this.config.MQTT_DEVICE_ID) return;
+    if (this.config.TELEMETRY_ONLY && (parsedTopic.kind === "state" || parsedTopic.kind === "acks") &&
+        (!this.config.RELAY_PILOT_ENABLED || retained)) return;
     if (!uuidSchema.safeParse(parsedTopic.deviceId).success) {
       this.log("warn", "invalid_device_topic", { topic }); return;
     }
@@ -159,43 +164,55 @@ export class IotWorker {
   }
 
   private async ingestAvailability(message: z.infer<typeof availabilityPayloadSchema>) {
+    const ageMs = Date.now() - Date.parse(message.deviceTimestamp);
+    if (this.config.RELAY_PILOT_ENABLED && message.online && (ageMs < -5_000 || ageMs > 45_000)) return;
     const status = message.online ? "ONLINE" : "OFFLINE";
     const result = await this.pool.query<{ home_id: string }>(`
-      insert into public.device_states (device_id, connection_status, last_seen_at)
-      values ($1,$2,now()) on conflict (device_id) do update
-      set connection_status=excluded.connection_status, last_seen_at=excluded.last_seen_at
-      returning (select home_id from public.devices where id=$1) as home_id
-    `, [message.deviceId, status]);
+      with state as (
+        insert into public.device_states (device_id, connection_status, last_seen_at)
+        values ($1,$2,now()) on conflict (device_id) do update
+        set connection_status=excluded.connection_status, last_seen_at=excluded.last_seen_at
+        returning device_id
+      ), firmware as (
+        update public.devices set firmware_version=$3
+        where id in (select device_id from state) and $4::boolean
+          and firmware_version is distinct from $3
+      )
+      select d.home_id from state join public.devices d on d.id=state.device_id
+    `, [message.deviceId, status, message.firmwareVersion ?? null, this.config.RELAY_PILOT_ENABLED && message.online]);
     const homeId = result.rows[0]?.home_id;
     if (homeId) await this.realtime.publish(homeId, "device.availability", { deviceId: message.deviceId, online: message.online, reason: message.reason });
   }
 
   private async ingestAcknowledgement(message: z.infer<typeof commandAcknowledgementPayloadSchema>) {
     if (!uuidSchema.safeParse(message.commandId).success) throw new Error("Acknowledgement commandId must be a UUID");
-    const status = message.status;
-    const result = await this.pool.query<{ home_id: string }>(`
+    const result = await this.pool.query<{ home_id: string; status: string }>(`
       with changed as (
-        update public.device_commands set status=$3, acknowledged_at=now(),
-          failure_code=$4, acknowledgement_payload=$5::jsonb
+        update public.device_commands
+        set status=case when $3='ACKNOWLEDGED' and desired_relay_state<>$6
+            then 'FAILED'::public.device_command_status else $3::public.device_command_status end,
+          acknowledged_at=now(), failure_code=case when $3='ACKNOWLEDGED' and desired_relay_state<>$6
+            then 'RELAY_STATE_MISMATCH' else $4 end, acknowledgement_payload=$5::jsonb
         where id=$1 and device_id=$2 and status in ('PENDING','SENT') and expires_at >= now()
-        returning device_id
+        returning device_id, status
       ), state as (
         update public.device_states set relay_state=$6, last_seen_at=now()
-        where device_id in (select device_id from changed)
+        where not $7::boolean and device_id in (select device_id from changed)
       )
-      select d.home_id from changed join public.devices d on d.id=changed.device_id
-    `, [message.commandId, message.deviceId, status, message.errorCode ?? null, JSON.stringify(message), message.confirmedRelayState]);
-    const homeId = result.rows[0]?.home_id;
-    if (homeId) await this.realtime.publish(homeId, "command.updated", { commandId: message.commandId, deviceId: message.deviceId, status, confirmedRelayState: message.confirmedRelayState });
+      select d.home_id, changed.status from changed join public.devices d on d.id=changed.device_id
+    `, [message.commandId, message.deviceId, message.status, message.errorCode ?? null, JSON.stringify(message), message.confirmedRelayState, this.config.RELAY_PILOT_ENABLED]);
+    const command = result.rows[0];
+    if (command) await this.realtime.publish(command.home_id, "command.updated", { commandId: message.commandId, deviceId: message.deviceId, status: command.status, confirmedRelayState: message.confirmedRelayState });
   }
 
   private async runOutbox() {
     while (!this.stopping) {
       try {
-        if (!this.config.TELEMETRY_ONLY) {
-          await this.executeDueSchedule();
-          await this.publishOne();
-          await this.timeoutExpired();
+        if (!this.config.TELEMETRY_ONLY) await this.executeDueSchedule();
+        if (!this.config.TELEMETRY_ONLY || this.config.RELAY_PILOT_ENABLED) {
+          const scope = this.config.RELAY_PILOT_ENABLED ? this.config.MQTT_DEVICE_ID! : null;
+          await this.timeoutExpired(scope);
+          if (this.mqttReady) await this.publishOne(scope);
         }
         if (Date.now() - this.lastMaintenanceAt >= 60_000) {
           await this.runMaintenance();
@@ -207,48 +224,49 @@ export class IotWorker {
     }
   }
 
-  private async publishOne() {
-    const client = await this.pool.connect();
-    let command: OutboxCommand | undefined;
-    try {
-      await client.query("begin");
-      const result = await client.query<OutboxCommand>(`
+  private async publishOne(deviceId: string | null) {
+    const { rows: [command] } = await this.pool.query<OutboxCommand>(`
+      with next_command as (
         select o.command_id, c.device_id, c.desired_relay_state, c.requested_at, c.expires_at
         from public.device_command_outbox o join public.device_commands c on c.id=o.command_id
         where o.published_at is null and o.available_at <= now() and c.status='PENDING'
+          and c.expires_at > now() and ($1::uuid is null or c.device_id=$1)
+          and (o.locked_at is null or o.locked_at < now() - interval '8 seconds')
         order by o.available_at for update of o skip locked limit 1
-      `);
-      command = result.rows[0];
-      if (command) await client.query("update public.device_command_outbox set locked_at=now(), locked_by=$2 where command_id=$1", [command.command_id, this.config.MQTT_CLIENT_ID]);
-      await client.query("commit");
-    } catch (error) { await client.query("rollback"); throw error; }
-    finally { client.release(); }
+      )
+      update public.device_command_outbox o set locked_at=now(), locked_by=$2
+      from next_command c where o.command_id=c.command_id
+      returning c.command_id, c.device_id, c.desired_relay_state, c.requested_at, c.expires_at
+    `, [deviceId, this.config.MQTT_CLIENT_ID]);
     if (!command) return;
 
     const payload = relayCommandPayloadSchema.parse({ schemaVersion: 1, commandId: command.command_id, deviceId: command.device_id, type: "SET_RELAY", requestedState: command.desired_relay_state, issuedAt: command.requested_at.toISOString(), expiresAt: command.expires_at.toISOString() });
-    await new Promise<void>((resolve, reject) => this.mqtt.publish(deviceTopic(command.device_id, "commands"), JSON.stringify(payload), { qos: 1, retain: false }, (error) => error ? reject(error) : resolve()));
-    const publishClient = await this.pool.connect();
-    try {
-      await publishClient.query("begin");
-      await publishClient.query(
-        "update public.device_commands set status='SENT', sent_at=now(), attempt_count=attempt_count+1 where id=$1 and status='PENDING'",
-        [command.command_id]
-      );
-      await publishClient.query(
-        "update public.device_command_outbox set published_at=now(), locked_at=null, locked_by=null where command_id=$1",
-        [command.command_id]
-      );
-      await publishClient.query("commit");
-    } catch (error) {
-      await publishClient.query("rollback");
-      throw error;
-    } finally {
-      publishClient.release();
-    }
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("MQTT publish acknowledgement timed out")), 4_000);
+      this.mqtt.publish(deviceTopic(command.device_id, "commands"), JSON.stringify(payload), { qos: 1, retain: false }, (error) => {
+        clearTimeout(timeout);
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+    await this.pool.query(`
+      with sent as (
+        update public.device_commands
+        set status='SENT', sent_at=now(), attempt_count=attempt_count+1
+        where id=$1 and status='PENDING'
+      )
+      update public.device_command_outbox
+      set published_at=now(), locked_at=null, locked_by=null
+      where command_id=$1
+    `, [command.command_id]);
   }
 
-  private async timeoutExpired() {
-    await this.pool.query("update public.device_commands set status='TIMED_OUT', failure_code='ACK_TIMEOUT' where status in ('PENDING','SENT') and expires_at < now()");
+  private async timeoutExpired(deviceId: string | null) {
+    await this.pool.query(`
+      update public.device_commands set status='TIMED_OUT', failure_code='ACK_TIMEOUT'
+      where status in ('PENDING','SENT') and expires_at < now()
+        and ($1::uuid is null or device_id=$1)
+    `, [deviceId]);
   }
 
   private async runMaintenance() {

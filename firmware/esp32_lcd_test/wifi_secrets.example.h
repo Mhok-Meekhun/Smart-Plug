@@ -10,3 +10,5 @@
 #define RUAN_MQTT_PASSWORD ""
 // Paste the broker's CA PEM as a C++ string with \n between lines.
 #define RUAN_MQTT_CA ""
+// Keep at 0 until the single-device cloud relay pilot is ready.
+#define RUAN_ENABLE_CLOUD_RELAY 0

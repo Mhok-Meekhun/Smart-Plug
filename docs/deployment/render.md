@@ -38,6 +38,27 @@ Keep `TELEMETRY_ONLY=true` and set `MQTT_DEVICE_ID` to the registered plug's
 ID for the pilot. Give the worker's MQTT identity subscribe access to that
 plug's telemetry and availability topics.
 
+## Opt-in relay pilot
+
+The default deployment stays in monitoring mode. For an isolated, reviewed
+pilot of a single plug, use the [MQTT rules and board checklist](../../firmware/README.md#opt-in-cloud-relay-pilot).
+On the local worker keep `TELEMETRY_ONLY=true`, set the exact
+`MQTT_DEVICE_ID`, and opt in with `RELAY_PILOT_ENABLED=true`. Use only one
+command worker for that pilot. The scoped worker consumes that plug's
+outbox and does not run schedules.
+
+For the API, opt in with `RELAY_PILOT_DEVICE_ID` set to the same device ID.
+The API requires an active plug, home ownership, recent online status and
+the firmware's relay capability before it queues a command. Start with an
+isolated test environment. Check an acknowledged ON/OFF round trip with a
+simulator before enabling the API flag on the deployed environment.
+
+Verify that expired commands are not published, an acknowledgement with
+the wrong GPIO level is rejected, and only the selected device receives
+commands. To return to monitoring mode, remove the API flag and set
+`RELAY_PILOT_ENABLED=false` on the worker. For the next firmware upload,
+restore the firmware flag to its default `0`.
+
 ## Required dashboard values
 
 | Service | Variable | Source |

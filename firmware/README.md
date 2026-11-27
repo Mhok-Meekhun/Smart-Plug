@@ -141,6 +141,45 @@ The ESP32 dashboard is separate from the deployed Render app.
    the LCD. Check that readings resume after reboot and Wi-Fi interruption.
    A meter read fault stays distinct from a valid zero-watt reading.
 
-The pilot firmware sends readings and availability over MQTT. The web API
-blocks relay and schedule commands for devices registered this way until
-relay operation can be checked with the actual hardware.
+The default firmware sends readings and availability over MQTT. The web API
+keeps these devices in monitoring mode by default.
+
+### Opt-in cloud relay pilot
+
+The sketch also includes an opt-in MQTT receiver for one reviewed device.
+Keep `RUAN_ENABLE_CLOUD_RELAY` at its default `0` during telemetry tests.
+
+1. Verify that the relay stays off at ESP32 power-up and reset on an
+   isolated low-voltage bench with AC and loads disconnected. Use the
+   existing serial bench test to verify relay polarity and the output
+   independently of the cloud. Have the assembled mains hardware reviewed
+   before running a live-load pilot.
+2. Extend the existing deny-by-default MQTT rules for this exact device ID.
+   The plug may subscribe to `v1/devices/<device-id>/commands` and publish
+   `v1/devices/<device-id>/state` and `v1/devices/<device-id>/acks` in
+   addition to its existing telemetry and availability topics. The worker
+   may publish `commands` and subscribe to `state` and `acks` for that
+   same ID. Use TLS and distinct credentials. Commands use QoS 1 and are
+   never retained.
+3. For the reviewed test only, set `#define RUAN_ENABLE_CLOUD_RELAY 1` in
+   the ignored `wifi_secrets.h`. Build and upload while the ESP32 is
+   separated from mains and powered by USB only. Configure the scoped
+   worker as documented in [Render deployment](../docs/deployment/render.md#opt-in-relay-pilot).
+4. Check that an unpowered PZEM causes an ON command to fail and that OFF
+   stays inactive. Verify the command status and independently reported
+   GPIO state. The app identifies the GPIO signal as its source. Verify
+   physical relay operation separately on the reviewed hardware setup.
+
+The ESP32 requires a fresh meter sample to turn on. It requests OFF on
+startup, when it detects loss of Wi-Fi or MQTT, when the meter sample
+becomes stale, and after 30 seconds of continuous ON. It rejects expired
+or retained commands and ON requests issued before its current MQTT
+subscription. The cloud mode takes exclusive ownership of the output,
+disabling the LAN relay controls while it is selected. A successful
+acknowledgement verifies GPIO level only. The circuit has no relay-contact
+feedback in this configuration.
+
+The LCD and telemetry can show voltage, current, power and energy when
+an otherwise valid meter response has an invalid power factor. Such a
+sample still blocks relay ON. The cloud command reports `METER_PF_INVALID`
+so this case can be distinguished from a missing reading.

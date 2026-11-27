@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <atomic>
+#include <cJSON.h>
 #include <driver/gpio.h>
 #include <esp_random.h>
 #include <math.h>
@@ -25,6 +26,9 @@
 #define RUAN_DEVICE_ID ""
 #define RUAN_MQTT_PASSWORD ""
 #define RUAN_MQTT_CA ""
+#endif
+#ifndef RUAN_ENABLE_CLOUD_RELAY
+#define RUAN_ENABLE_CLOUD_RELAY 0
 #endif
 
 constexpr int I2C_SDA_PIN = 21, I2C_SCL_PIN = 22;
@@ -49,7 +53,8 @@ struct PhaseStatus {
 constexpr bool ENABLE_LOCAL_RELAY_TEST = false;
 // For ESP32 + relay on an isolated low-voltage bench with AC disconnected.
 constexpr bool ENABLE_RELAY_SERIAL_BENCH_TEST = false;
-constexpr bool WEB_RELAY_ENABLED = !ENABLE_RELAY_SERIAL_BENCH_TEST && !ENABLE_LOCAL_RELAY_TEST &&
+constexpr bool CLOUD_RELAY_ENABLED = RUAN_ENABLE_CLOUD_RELAY == 1;
+constexpr bool WEB_RELAY_ENABLED = !CLOUD_RELAY_ENABLED && !ENABLE_RELAY_SERIAL_BENCH_TEST && !ENABLE_LOCAL_RELAY_TEST &&
                                    WIFI_SSID[0] != '\0' && sizeof(RELAY_CONTROL_TOKEN) == 33;
 constexpr int RELAY_PIN = 5; // D5 on the DOIT ESP32; verify relay stays OFF through reset.
 constexpr int RELAY_BUTTON_PIN = -1; // Button GPIO has not been confirmed.
@@ -64,7 +69,9 @@ constexpr bool isAvailableControlPin(int pin) {
 
 static_assert(!(ENABLE_LOCAL_RELAY_TEST && ENABLE_RELAY_SERIAL_BENCH_TEST),
               "Choose one relay test mode.");
-static_assert(!(ENABLE_LOCAL_RELAY_TEST || ENABLE_RELAY_SERIAL_BENCH_TEST || WEB_RELAY_ENABLED) ||
+static_assert(!CLOUD_RELAY_ENABLED || (!ENABLE_LOCAL_RELAY_TEST && !ENABLE_RELAY_SERIAL_BENCH_TEST),
+              "Cloud relay must have exclusive control of the output.");
+static_assert(!(ENABLE_LOCAL_RELAY_TEST || ENABLE_RELAY_SERIAL_BENCH_TEST || WEB_RELAY_ENABLED || CLOUD_RELAY_ENABLED) ||
               RELAY_PIN == 5 || isAvailableControlPin(RELAY_PIN),
               "Set an available relay GPIO for the DOIT ESP32.");
 static_assert(!ENABLE_LOCAL_RELAY_TEST ||
@@ -77,6 +84,8 @@ WebServer server(80);
 
 bool lcdReady = false;
 std::atomic<bool> readingValid{false};
+std::atomic<bool> relayMeterValid{false};
+const char* meterReadError = "No live data";
 float voltage, current, power, energy, powerFactor, apparentPower;
 float reactiveMagnitude = NAN, phaseAngle = NAN;
 bool powerFactorAvailable = false;
@@ -92,7 +101,28 @@ unsigned long relayOnSince = 0;
 
 esp_mqtt_client_handle_t cloudMqtt = nullptr;
 std::atomic<bool> cloudConnected{false};
-char telemetryTopic[80], availabilityTopic[80], lastWill[288];
+std::atomic<bool> cloudRelayReady{false};
+std::atomic<uint32_t> cloudSession{0};
+char telemetryTopic[80], availabilityTopic[80], commandTopic[80], stateTopic[80], ackTopic[80], lastWill[288];
+
+struct CloudRelayRequest {
+  char id[37];
+  uint64_t issuedMs;
+  uint64_t expiresMs;
+  uint32_t session;
+  bool turnOn;
+};
+
+struct CloudRelayResult {
+  char id[37];
+  uint32_t session;
+  bool outputOn;
+  const char* error;
+};
+
+QueueHandle_t cloudRequests = nullptr, cloudResults = nullptr;
+int cloudSubscription = -1; // Accessed only by the MQTT event task.
+uint64_t cloudSubscribedAt = 0;
 
 const char PAGE_HTML[] PROGMEM = R"HTML(<!doctype html>
 <html lang="th">
@@ -261,8 +291,12 @@ bool hasFreshReading() {
   return millis() - sampledAt <= MAX_SAMPLE_AGE_MS;
 }
 
+bool hasFreshRelayReading() {
+  return relayMeterValid.load() && hasFreshReading();
+}
+
 const char* relayStatus() {
-  if (!ENABLE_LOCAL_RELAY_TEST && !WEB_RELAY_ENABLED) return "disabled";
+  if (!ENABLE_LOCAL_RELAY_TEST && !WEB_RELAY_ENABLED && !CLOUD_RELAY_ENABLED) return "disabled";
   if (!relayTaskStarted) return "unavailable";
   return relayRequestedOn ? "on_requested" : "off_requested";
 }
@@ -311,7 +345,7 @@ void serviceLocalButton(unsigned long now) {
     previousPressed = pressed;
     changedAt = now;
   }
-  if (relayRequestedOn && (!hasFreshReading() || now - relayOnSince >= RELAY_LIMIT_MS)) {
+  if (relayRequestedOn && (!hasFreshRelayReading() || now - relayOnSince >= RELAY_LIMIT_MS)) {
     requestRelay(false);
     released = false;
     return;
@@ -323,7 +357,7 @@ void serviceLocalButton(unsigned long now) {
     released = false;
     if (relayRequestedOn) {
       requestRelay(false);
-    } else if (hasFreshReading()) {
+    } else if (hasFreshRelayReading()) {
       requestRelay(true);
     }
   }
@@ -331,7 +365,7 @@ void serviceLocalButton(unsigned long now) {
 
 void serviceWebRelay(unsigned long now) {
   const RelayCommand command = pendingWebCommand.exchange(RelayCommand::None);
-  const bool canEnergize = WiFi.status() == WL_CONNECTED && hasFreshReading();
+  const bool canEnergize = WiFi.status() == WL_CONNECTED && hasFreshRelayReading();
   const bool expired = relayRequestedOn && now - relayOnSince >= RELAY_LIMIT_MS;
   if (command == RelayCommand::TurnOff) {
     // Reapply the inactive level even if the previous GPIO request was OFF.
@@ -343,22 +377,75 @@ void serviceWebRelay(unsigned long now) {
   }
 }
 
+bool relayOutputOn() {
+  return gpio_get_level(static_cast<gpio_num_t>(RELAY_PIN)) == (RELAY_ACTIVE_LOW ? LOW : HIGH);
+}
+
+uint64_t cloudEpochMs() {
+  timeval clock{};
+  gettimeofday(&clock, nullptr);
+  if (clock.tv_sec < 1735689600) return 0;
+  return static_cast<uint64_t>(clock.tv_sec) * 1000ULL + clock.tv_usec / 1000;
+}
+
+void serviceCloudRelay(unsigned long now) {
+  static uint64_t lastIssuedMs = 0;
+  static char lastId[37] = "";
+  const bool connected = cloudRelayReady && WiFi.status() == WL_CONNECTED;
+  if (relayRequestedOn && (!connected || !hasFreshRelayReading() || now - relayOnSince >= RELAY_LIMIT_MS)) {
+    requestRelay(false);
+  }
+
+  CloudRelayRequest command{};
+  if (xQueueReceive(cloudRequests, &command, 0) != pdTRUE ||
+      !connected || command.session != cloudSession.load() ||
+      strcmp(command.id, lastId) == 0) return;
+
+  CloudRelayResult result{};
+  memcpy(result.id, command.id, sizeof(result.id));
+  result.session = command.session;
+  const uint64_t time = cloudEpochMs();
+
+  if (!time || command.expiresMs <= time || command.issuedMs > time + 2000) {
+    result.error = "COMMAND_EXPIRED";
+  } else if (command.issuedMs < lastIssuedMs || (command.turnOn && command.issuedMs == lastIssuedMs)) {
+    result.error = "COMMAND_OUT_OF_ORDER";
+  } else {
+    lastIssuedMs = command.issuedMs;
+    memcpy(lastId, command.id, sizeof(lastId));
+    if (command.turnOn && !hasFreshRelayReading()) {
+      result.error = hasFreshReading() ? "METER_PF_INVALID" : "METER_READING_STALE";
+    } else {
+      // An already-on command must never refresh the maximum ON duration.
+      if (!command.turnOn || !relayRequestedOn) requestRelay(command.turnOn);
+      if (relayOutputOn() != command.turnOn) {
+        requestRelay(false);
+        result.error = "GPIO_READBACK_MISMATCH";
+      }
+    }
+  }
+  result.outputOn = relayOutputOn();
+  xQueueSend(cloudResults, &result, 0);
+}
+
 void runRelayTask(void*) {
   // Keep the software timeout independent of HTTP and UART wait times.
   while (true) {
     const unsigned long now = millis();
     if (ENABLE_LOCAL_RELAY_TEST) serviceLocalButton(now);
     if (WEB_RELAY_ENABLED) serviceWebRelay(now);
+    if (CLOUD_RELAY_ENABLED) serviceCloudRelay(now);
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
 
-void calculatePower() {
+void calculatePower(bool validPf) {
   apparentPower = voltage * current;
-  powerFactorAvailable = current >= START_CURRENT_A && power >= START_POWER_W;
+  const bool enoughLoad = current >= START_CURRENT_A && power >= START_POWER_W;
+  powerFactorAvailable = validPf && enoughLoad;
   reactiveMagnitude = NAN;
   phaseAngle = NAN;
-  if (!powerFactorAvailable || apparentPower <= 0.0f) return;
+  if (!enoughLoad || apparentPower <= 0.0f) return;
 
   // Treat small rounding disagreements as unity. Larger discrepancies leave
   // the estimate unavailable while preserving the separate meter readings.
@@ -366,7 +453,7 @@ void calculatePower() {
   if (power > apparentPower + roundingTolerance) return;
   const float activeRatio = fminf(power / apparentPower, 1.0f);
   reactiveMagnitude = apparentPower * sqrtf((1.0f - activeRatio) * (1.0f + activeRatio));
-  phaseAngle = acosf(powerFactor) * (180.0f / PI);
+  if (powerFactorAvailable) phaseAngle = acosf(powerFactor) * (180.0f / PI);
 }
 
 PhaseStatus phaseStatus() {
@@ -411,7 +498,7 @@ void handleRelayCommand() {
   }
   const String action = server.arg("plain");
   if (action == "on") {
-    if (!hasFreshReading()) {
+    if (!hasFreshRelayReading()) {
       server.send(409);
       return;
     }
@@ -485,7 +572,7 @@ void showReading() {
   }
   if (!hasFreshReading()) {
     writeLine(0, "PZEM read error");
-    writeLine(1, "No live data");
+    writeLine(1, meterReadError);
     return;
   }
   char top[32], bottom[32];
@@ -514,7 +601,7 @@ void showReading() {
       break;
     default:
       snprintf(top, sizeof(top), "E:%.3f kWh", energy);
-      snprintf(bottom, sizeof(bottom), "%s", !ENABLE_LOCAL_RELAY_TEST && !WEB_RELAY_ENABLED ? "Relay disabled" :
+      snprintf(bottom, sizeof(bottom), "%s", !ENABLE_LOCAL_RELAY_TEST && !WEB_RELAY_ENABLED && !CLOUD_RELAY_ENABLED ? "Relay disabled" :
                (!relayTaskStarted ? "Relay test error" : (relayRequestedOn ? "Relay ON cmd" : "Relay OFF cmd")));
       break;
   }
@@ -524,20 +611,29 @@ void showReading() {
 
 void sampleMeter() {
   voltage = pzem.voltage(); // This accessor triggers a read of all meter registers.
-  if (isfinite(voltage)) {
+  const char* issue = nullptr;
+  if (!isfinite(voltage)) {
+    issue = "No valid frame";
+  } else {
     current = pzem.current();
     power = pzem.power();
     energy = pzem.energy();
     powerFactor = pzem.pf();
+    if (voltage <= 0.0f) {
+      issue = "Invalid voltage";
+    } else if (!isfinite(current) || current < 0.0f || !isfinite(power) || power < 0.0f ||
+               !isfinite(energy) || energy < 0.0f) {
+      issue = "Invalid I/P/E";
+    }
   }
-  const bool valid = isfinite(voltage) && voltage > 0.0f &&
-                     isfinite(current) && current >= 0.0f && isfinite(power) && power >= 0.0f &&
-                     isfinite(energy) && energy >= 0.0f &&
-                     isfinite(powerFactor) && powerFactor >= 0.0f && powerFactor <= 1.0f;
-  if (valid) {
-    calculatePower();
+  if (!issue) {
+    const bool validPf = isfinite(powerFactor) && powerFactor >= 0.0f && powerFactor <= 1.0f;
+    if (!validPf) relayMeterValid = false;
+    calculatePower(validPf);
+    meterReadError = "No live data";
     lastValidSample = millis();
     readingValid = true;
+    if (validPf) relayMeterValid = true;
     char pf[16], q[16], angle[16];
     formatJsonNumber(pf, sizeof(pf), powerFactorAvailable ? powerFactor : NAN, 2);
     formatJsonNumber(q, sizeof(q), reactiveMagnitude, 1);
@@ -545,8 +641,10 @@ void sampleMeter() {
     Serial.printf("V=%.1f V | I=%.3f A | P=%.1f W | S=%.1f VA | |Q|~%s var | PF=%s | angle~%s deg | %s | E=%.3f kWh | relay=%s\n",
                   voltage, current, power, apparentPower, q, pf, angle, phaseStatus().code, energy, relayStatus());
   } else {
+    relayMeterValid = false;
     readingValid = false;
-    Serial.println("PZEM read error: measurement unavailable");
+    meterReadError = issue;
+    Serial.printf("PZEM read error: %s\n", meterReadError);
   }
   showReading();
 }
@@ -564,11 +662,96 @@ bool cloudTimestamp(char (&timestamp)[25], unsigned long long& sequence) {
   return true;
 }
 
-void cloudMqttEvent(void*, esp_event_base_t, int32_t eventId, void*) {
+uint64_t parseCloudTime(const char* value) {
+  if (!value || strlen(value) != 24 || value[19] != '.' || value[23] != 'Z') return 0;
+  unsigned milliseconds = 0;
+  for (size_t offset = 20; offset < 23; ++offset) {
+    if (value[offset] < '0' || value[offset] > '9') return 0;
+    milliseconds = milliseconds * 10 + value[offset] - '0';
+  }
+  tm date{};
+  if (strptime(value, "%Y-%m-%dT%H:%M:%S", &date) != value + 19) return 0;
+  // configTime(0, 0, ...) sets the ESP32 runtime timezone to UTC before MQTT starts.
+  const time_t seconds = mktime(&date);
+  char normalized[20];
+  if (seconds < 1735689600 || !strftime(normalized, sizeof(normalized), "%Y-%m-%dT%H:%M:%S", &date) ||
+      memcmp(value, normalized, 19) != 0) return 0;
+  return static_cast<uint64_t>(seconds) * 1000ULL + milliseconds;
+}
+
+bool validCommandId(const char* id) {
+  if (!id || strlen(id) != 36) return false;
+  for (size_t i = 0; i < 36; ++i) {
+    const char value = id[i];
+    if (i == 8 || i == 13 || i == 18 || i == 23) {
+      if (value != '-') return false;
+    } else if (!((value >= '0' && value <= '9') || (value >= 'a' && value <= 'f'))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void receiveCloudRelayCommand(esp_mqtt_event_handle_t event) {
+  if (!cloudRelayReady || event->retain || event->qos != 1 ||
+      event->current_data_offset != 0 || event->data_len != event->total_data_len ||
+      event->data_len <= 0 || event->data_len > 512 ||
+      event->topic_len != static_cast<int>(strlen(commandTopic)) ||
+      memcmp(event->topic, commandTopic, event->topic_len) != 0 ||
+      memchr(event->data, '\0', event->data_len)) return;
+
+  char json[513]{};
+  memcpy(json, event->data, event->data_len);
+  cJSON* value = cJSON_ParseWithLengthOpts(json, event->data_len + 1, nullptr, true);
+  if (!value) return;
+
+  const cJSON* version = cJSON_GetObjectItemCaseSensitive(value, "schemaVersion");
+  const cJSON* state = cJSON_GetObjectItemCaseSensitive(value, "requestedState");
+  const char* kind = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(value, "type"));
+  const char* id = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(value, "commandId"));
+  const char* device = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(value, "deviceId"));
+  const uint64_t issued = parseCloudTime(cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(value, "issuedAt")));
+  const uint64_t expires = parseCloudTime(cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(value, "expiresAt")));
+  const bool turnOn = cJSON_IsTrue(state);
+  if (cJSON_IsNumber(version) && version->valuedouble == 1 && cJSON_IsBool(state) &&
+      kind && strcmp(kind, "SET_RELAY") == 0 && device && strcmp(device, RUAN_DEVICE_ID) == 0 &&
+      validCommandId(id) && issued && expires > issued && expires - issued <= 30'000 &&
+      (!turnOn || issued >= cloudSubscribedAt)) {
+    CloudRelayRequest command{};
+    memcpy(command.id, id, sizeof(command.id));
+    command.issuedMs = issued;
+    command.expiresMs = expires;
+    command.session = cloudSession.load();
+    command.turnOn = turnOn;
+    xQueueSend(cloudRequests, &command, 0);
+  }
+  cJSON_Delete(value);
+}
+
+void cloudMqttEvent(void*, esp_event_base_t, int32_t eventId, void* eventData) {
+  const auto event = static_cast<esp_mqtt_event_handle_t>(eventData);
   if (eventId == MQTT_EVENT_CONNECTED) {
+    cloudRelayReady = false;
+    ++cloudSession;
     cloudConnected = true;
-    Serial.println("RUAN MQTT connected (telemetry only).");
+    if (CLOUD_RELAY_ENABLED && relayTaskStarted) {
+      cloudSubscription = esp_mqtt_client_subscribe(event->client, commandTopic, 1);
+      if (cloudSubscription <= 0) Serial.println("RUAN relay command subscription could not start.");
+    }
+    Serial.println("RUAN MQTT connected.");
+  } else if (CLOUD_RELAY_ENABLED && eventId == MQTT_EVENT_SUBSCRIBED) {
+    if (cloudSubscription <= 0 || event->msg_id != cloudSubscription) return;
+    if (event->data && event->data_len == 1 && static_cast<uint8_t>(event->data[0]) == 1) {
+      cloudSubscribedAt = cloudEpochMs();
+      cloudRelayReady = cloudSubscribedAt > 0;
+      if (cloudRelayReady) Serial.println("RUAN relay command subscription ready.");
+    } else {
+      Serial.println("RUAN relay command subscription denied or QoS 1 unavailable.");
+    }
+  } else if (CLOUD_RELAY_ENABLED && eventId == MQTT_EVENT_DATA) {
+    receiveCloudRelayCommand(event);
   } else if (eventId == MQTT_EVENT_DISCONNECTED) {
+    cloudRelayReady = false;
     cloudConnected = false;
     Serial.println("RUAN MQTT disconnected.");
   } else if (eventId == MQTT_EVENT_ERROR) {
@@ -579,6 +762,9 @@ void cloudMqttEvent(void*, esp_event_base_t, int32_t eventId, void*) {
 bool startCloudMqtt(const char* timestamp) {
   snprintf(telemetryTopic, sizeof(telemetryTopic), "v1/devices/%s/telemetry", RUAN_DEVICE_ID);
   snprintf(availabilityTopic, sizeof(availabilityTopic), "v1/devices/%s/availability", RUAN_DEVICE_ID);
+  snprintf(commandTopic, sizeof(commandTopic), "v1/devices/%s/commands", RUAN_DEVICE_ID);
+  snprintf(stateTopic, sizeof(stateTopic), "v1/devices/%s/state", RUAN_DEVICE_ID);
+  snprintf(ackTopic, sizeof(ackTopic), "v1/devices/%s/acks", RUAN_DEVICE_ID);
   snprintf(lastWill, sizeof(lastWill),
            "{\"schemaVersion\":1,\"messageId\":\"will-%08lx%08lx\",\"deviceId\":\"%s\","
            "\"deviceTimestamp\":\"%s\",\"online\":false,\"reason\":\"LWT\"}",
@@ -605,12 +791,54 @@ bool startCloudMqtt(const char* timestamp) {
   return false;
 }
 
+bool publishCloudRelay(const char* timestamp, unsigned long long sequence) {
+  static int publishedState = -1;
+  static uint32_t publishedSession = 0;
+  static unsigned long publishedAt = 0;
+  const uint32_t session = cloudSession.load();
+  if (!cloudRelayReady) {
+    publishedState = -1;
+    return false;
+  }
+  if (session != publishedSession) publishedState = -1;
+
+  char json[416];
+  const int output = relayOutputOn();
+  if (output != publishedState || millis() - publishedAt >= 5'000) {
+    snprintf(json, sizeof(json),
+             "{\"schemaVersion\":1,\"messageId\":\"state-%llu\",\"deviceId\":\"%s\","
+             "\"deviceTimestamp\":\"%s\",\"sequence\":%llu,\"relayState\":%s}",
+             sequence, RUAN_DEVICE_ID, timestamp, sequence, output ? "true" : "false");
+    if (esp_mqtt_client_enqueue(cloudMqtt, stateTopic, json, 0, 1, 0, false) >= 0) {
+      publishedState = output;
+      publishedSession = session;
+      publishedAt = millis();
+    }
+  }
+
+  CloudRelayResult result{};
+  while (xQueuePeek(cloudResults, &result, 0) == pdTRUE) {
+    if (result.session == session) {
+      char error[64] = "";
+      if (result.error) snprintf(error, sizeof(error), ",\"errorCode\":\"%s\"", result.error);
+      snprintf(json, sizeof(json),
+               "{\"schemaVersion\":1,\"messageId\":\"ack-%s\",\"deviceId\":\"%s\","
+               "\"deviceTimestamp\":\"%s\",\"commandId\":\"%s\",\"status\":\"%s\",\"confirmedRelayState\":%s%s}",
+               result.id, RUAN_DEVICE_ID, timestamp, result.id, result.error ? "FAILED" : "ACKNOWLEDGED",
+               result.outputOn ? "true" : "false", error);
+      if (esp_mqtt_client_enqueue(cloudMqtt, ackTopic, json, 0, 1, 0, false) < 0) break;
+    }
+    xQueueReceive(cloudResults, &result, 0);
+  }
+  return publishedState >= 0;
+}
+
 void serviceCloudMqtt(bool wifiConnected) {
   if (!wifiConnected || strncmp(RUAN_MQTT_URL, "mqtts://", 8) != 0 ||
       strlen(RUAN_DEVICE_ID) != 36 || !RUAN_MQTT_PASSWORD[0] || !RUAN_MQTT_CA[0]) return;
 
   static unsigned long lastStart = 0, lastSent = 0, lastAvailability = 0;
-  static bool attemptedStart = false, wasConnected = false;
+  static bool attemptedStart = false, wasConnected = false, announcedRelay = false;
   const unsigned long now = millis();
   char timestamp[25];
   unsigned long long sequence;
@@ -627,6 +855,8 @@ void serviceCloudMqtt(bool wifiConnected) {
     wasConnected = false;
     return;
   }
+  const bool relayReady = CLOUD_RELAY_ENABLED && publishCloudRelay(timestamp, sequence);
+  if (relayReady != announcedRelay) wasConnected = false;
   if (wasConnected && now - lastSent < 5000) return;
   lastSent = now;
   char json[416];
@@ -634,10 +864,12 @@ void serviceCloudMqtt(bool wifiConnected) {
     snprintf(json, sizeof(json),
              "{\"schemaVersion\":1,\"messageId\":\"online-%llu\",\"deviceId\":\"%s\","
              "\"deviceTimestamp\":\"%s\",\"online\":true,\"reason\":\"%s\","
-             "\"firmwareVersion\":\"esp32-telemetry-1\"}",
-             sequence, RUAN_DEVICE_ID, timestamp, wasConnected ? "HEARTBEAT" : "CONNECTED");
+             "\"firmwareVersion\":\"%s\"}",
+             sequence, RUAN_DEVICE_ID, timestamp, wasConnected ? "HEARTBEAT" : "CONNECTED",
+             relayReady ? "esp32-relay-pilot-1" : "esp32-telemetry-1");
     if (esp_mqtt_client_enqueue(cloudMqtt, availabilityTopic, json, 0, 1, 1, false) >= 0) {
       wasConnected = true;
+      announcedRelay = relayReady;
       lastAvailability = now;
     }
   }
@@ -658,7 +890,7 @@ void serviceCloudMqtt(bool wifiConnected) {
 
 void setup() {
   Serial.begin(115200);
-  if (ENABLE_LOCAL_RELAY_TEST || ENABLE_RELAY_SERIAL_BENCH_TEST || WEB_RELAY_ENABLED) {
+  if (ENABLE_LOCAL_RELAY_TEST || ENABLE_RELAY_SERIAL_BENCH_TEST || WEB_RELAY_ENABLED || CLOUD_RELAY_ENABLED) {
     // Preload the inactive level before enabling the output driver.
     requestRelay(false);
     pinMode(RELAY_PIN, OUTPUT);
@@ -668,13 +900,20 @@ void setup() {
     Serial.println("Send RELAY TEST with a line ending for one 1-second GPIO pulse.");
     return;
   }
+  Serial.printf("PZEM UART2: RX GPIO%d, TX GPIO%d, %d baud, address 0x%02X\n",
+                PZEM_RX_PIN, PZEM_TX_PIN, PZEM_BAUD_RATE, PZEM_DEFAULT_ADDR);
   if (ENABLE_LOCAL_RELAY_TEST) {
     pinMode(RELAY_BUTTON_PIN, INPUT_PULLUP);
   }
-  if (ENABLE_LOCAL_RELAY_TEST || WEB_RELAY_ENABLED) {
+  if (CLOUD_RELAY_ENABLED) {
+    cloudRequests = xQueueCreate(4, sizeof(CloudRelayRequest));
+    cloudResults = xQueueCreate(8, sizeof(CloudRelayResult));
+  }
+  if (ENABLE_LOCAL_RELAY_TEST || WEB_RELAY_ENABLED || CLOUD_RELAY_ENABLED) {
     // Read the signal at the pad while it remains configured as an output.
     const bool readbackReady = gpio_input_enable(static_cast<gpio_num_t>(RELAY_PIN)) == ESP_OK;
-    relayTaskStarted = readbackReady &&
+    const bool queuesReady = !CLOUD_RELAY_ENABLED || (cloudRequests && cloudResults);
+    relayTaskStarted = readbackReady && queuesReady &&
                        xTaskCreate(runRelayTask, "relay-control", 3072, nullptr, 2, nullptr) == pdPASS;
     if (!relayTaskStarted) Serial.println("Relay task could not start; output requested OFF.");
   } else {

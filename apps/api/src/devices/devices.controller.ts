@@ -121,4 +121,18 @@ export class DevicesController {
       idempotencyKey,
     );
   }
+
+  @Get(":deviceId/commands/relay/:commandId")
+  @ApiOkResponse({ description: "Authorized relay command status" })
+  getRelayCommand(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("deviceId") rawDeviceId: string,
+    @Param("commandId") rawCommandId: string,
+  ) {
+    return this.devices.getRelayCommand(
+      user.id,
+      parseRequest(deviceIdSchema, rawDeviceId),
+      parseRequest(deviceIdSchema, rawCommandId),
+    );
+  }
 }

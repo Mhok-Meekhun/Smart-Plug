@@ -31,6 +31,7 @@ type Device = {
   name: string;
   type: string;
   firmwareVersion: string | null;
+  relayPilotEnabled?: boolean;
   ratedCurrentA: number;
   powerFactor?: number | null;
   measurementReceivedAt?: string | null;
@@ -118,6 +119,7 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
     },
     [deviceId],
   );
+  const refreshDevice = useCallback(() => void load(true), [load]);
 
   useEffect(() => {
     void load();
@@ -187,6 +189,7 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
   const online = device.state?.connectionStatus === "ONLINE";
   const simulated = device.type === "SIMULATED_SMART_PLUG";
   const telemetryOnly = device.type === "TELEMETRY_SMART_PLUG";
+  const relayDisabled = telemetryOnly && !device.relayPilotEnabled;
   const measurementAt = device.measurementReceivedAt;
   const fresh = !telemetryOnly || (measurementAt != null && Date.now() - Date.parse(measurementAt) < 20_000);
   const readings = telemetryOnly && !fresh ? null : device.state;
@@ -314,12 +317,13 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
               <PowerToggle
                 appearance="buttons"
                 deviceId={device.id}
-                initialState={telemetryOnly ? null : device.state?.relayState ?? null}
+                initialState={relayDisabled ? null : device.state?.relayState ?? null}
                 demo={demoMode()}
-                unavailable={telemetryOnly || !online}
-                unavailableReason={telemetryOnly ? t("relayPendingBenchTest") : !online ? d("relayOffline") : undefined}
-                onConfirmed={() => void load(true)}
+                unavailable={relayDisabled || !online}
+                unavailableReason={relayDisabled ? t("relayPendingBenchTest") : !online ? d("relayOffline") : undefined}
+                onConfirmed={refreshDevice}
               />
+              {device.relayPilotEnabled ? <p className="mt-2 text-center text-xs text-white/80">{t("relayGpioPilot")}</p> : null}
             </div>
           </div>
         </div>

@@ -3,7 +3,6 @@
 import { CirclePower, LoaderCircle, Power } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useId, useState, useTransition } from "react";
-import { createClient } from "../lib/supabase/client";
 import { apiRequest } from "../lib/api-client";
 
 export function PowerToggle({
@@ -28,7 +27,7 @@ export function PowerToggle({
   const reasonId = useId();
   const [relayState, setRelayState] = useState(initialState);
   const [error, setError] = useState<string>();
-  const [waitingFor, setWaitingFor] = useState<boolean | null>(null);
+  const [waitingFor, setWaitingFor] = useState<{ id: string; desired: boolean; deadline: number }>();
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -36,58 +35,71 @@ export function PowerToggle({
   }, [initialState]);
 
   useEffect(() => {
-    if (waitingFor == null) return;
-    if (initialState === waitingFor) {
-      setWaitingFor(null);
-      return;
+    if (!waitingFor) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    async function poll(command: NonNullable<typeof waitingFor>) {
+      try {
+        const result = await apiRequest<{ status: string; failureCode?: string | null }>(
+          `/v1/devices/${deviceId}/commands/relay/${command.id}`,
+          { signal: AbortSignal.timeout(4_000) },
+        );
+        if (cancelled) return;
+        if (result.status === "ACKNOWLEDGED") {
+          setWaitingFor(undefined);
+          onConfirmed?.(command.desired);
+          return;
+        }
+        if (result.status === "FAILED" || result.status === "CANCELLED" || result.status === "TIMED_OUT") {
+          setWaitingFor(undefined);
+          if (result.status === "TIMED_OUT") setError(t("relayUnconfirmed"));
+          else if (result.failureCode === "METER_READING_STALE") setError(t("relayMeterStale"));
+          else if (result.failureCode === "METER_PF_INVALID") setError(t("relayMeterPfInvalid"));
+          else setError(t("failed"));
+          return;
+        }
+      } catch {
+        // A brief request failure must not be treated as device acknowledgement.
+      }
+      if (cancelled) return;
+      if (Date.now() >= command.deadline) {
+        setWaitingFor(undefined);
+        setError(t("relayUnconfirmed"));
+        return;
+      }
+      timer = setTimeout(() => void poll(command), 1_000);
     }
-    // The device detail refreshes its reported state over Realtime or polling.
-    // Leave room for a final refresh after the API command's 30-second expiry.
-    const timer = setTimeout(() => {
-      setWaitingFor(null);
-      setError(t("relayUnconfirmed"));
-    }, 47_000);
-    return () => clearTimeout(timer);
-  }, [initialState, waitingFor, t]);
+
+    timer = setTimeout(() => void poll(waitingFor), 650);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [deviceId, onConfirmed, t, waitingFor]);
 
   function requestState(desired: boolean) {
     if (pending || waitingFor != null || unavailable || desired === relayState) return;
     setError(undefined);
     startTransition(async () => {
       try {
-        if (demo) {
-          await apiRequest(`/v1/devices/${deviceId}/commands/relay`, {
-            method: "POST", body: JSON.stringify({ relayState: desired }),
-          });
-          setRelayState(desired);
-          onConfirmed?.(desired);
-          return;
-        }
-        const { data } = await createClient().auth.getSession();
-        const token = data.session?.access_token;
-        if (!token) throw new Error("Missing session");
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/v1/devices/${deviceId}/commands/relay`,
+        const command = await apiRequest<{
+          commandId: string;
+          confirmed?: boolean;
+          desiredRelayState?: boolean;
+        }>(
+          `/v1/devices/${deviceId}/commands/relay`,
           {
             method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-              "Idempotency-Key": crypto.randomUUID(),
-            },
+            ...(demo ? {} : { headers: { "Idempotency-Key": crypto.randomUUID() } }),
             body: JSON.stringify({ relayState: desired }),
           },
         );
-        if (!response.ok) throw new Error("Command rejected");
-        const command = (await response.json()) as {
-          confirmed?: boolean;
-          desiredRelayState?: boolean;
-        };
-        if (command.confirmed && command.desiredRelayState === desired) {
+        if (demo || (command.confirmed && command.desiredRelayState === desired)) {
           setRelayState(desired);
           onConfirmed?.(desired);
         } else if (appearance === "buttons") {
-          setWaitingFor(desired);
+          setWaitingFor({ id: command.commandId, desired, deadline: Date.now() + 35_000 });
         }
       } catch {
         setError(t("failed"));

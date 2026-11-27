@@ -14,4 +14,14 @@ describe("worker configuration",()=>{
     for(const [key,value] of Object.entries({...base,NODE_ENV:"production",MQTT_URL:"mqtts://broker.example.com:8883"}))vi.stubEnv(key,value);
     expect(loadConfig().MQTT_URL).toBe("mqtts://broker.example.com:8883");
   });
+  it("enables relay pilot delivery only with a single telemetry device scope", () => {
+    for (const [key, value] of Object.entries({ ...base, MQTT_URL: "mqtt://localhost:1883", RELAY_PILOT_ENABLED: "true" })) {
+      vi.stubEnv(key, value);
+    }
+    expect(() => loadConfig()).toThrow(/single telemetry device scope/);
+    vi.stubEnv("TELEMETRY_ONLY", "true");
+    expect(() => loadConfig()).toThrow(/single telemetry device scope/);
+    vi.stubEnv("MQTT_DEVICE_ID", "07fdfe74-cb01-4340-b44a-301a19de5345");
+    expect(loadConfig()).toMatchObject({ RELAY_PILOT_ENABLED: true, TELEMETRY_ONLY: true });
+  });
 });

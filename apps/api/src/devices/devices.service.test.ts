@@ -1,8 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PrismaService } from "../database/prisma.service.js";
 import { DevicesService } from "./devices.service.js";
 
 describe("DevicesService", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   it("registers telemetry-only plugs without inventing online status or measurements", async () => {
     const findFirst = vi.fn().mockResolvedValue({ id: "home-1" });
     const create = vi.fn().mockResolvedValue({ id: "device-1", name: "ESP32" });
@@ -35,6 +37,7 @@ describe("DevicesService", () => {
     const findFirst = vi.fn().mockResolvedValue({
       id: "0af11e45-676d-4ac2-8d45-867ddb0e0e90",
       ratedCurrentA: { toNumber: () => 16 },
+      home: { name: "Home", timezone: "Asia/Bangkok", currency: "THB" },
       state: null
     });
     const prisma = { device: { findFirst } } as unknown as PrismaService;
@@ -51,6 +54,57 @@ describe("DevicesService", () => {
         home: { members: { some: { userId: "3f683723-da0e-42cd-8407-4b3f524f5af3" } } }
       }
     }));
+  });
+
+  it("restricts pilot commands to the configured plug, its owner and ready firmware", async () => {
+    const deviceId = "0af11e45-676d-4ac2-8d45-867ddb0e0e90";
+    vi.stubEnv("RELAY_PILOT_DEVICE_ID", deviceId);
+    const device = {
+      id: deviceId,
+      type: "TELEMETRY_SMART_PLUG",
+      lifecycleStatus: "ACTIVE",
+      firmwareVersion: "esp32-relay-pilot-1",
+      home: { members: [{ role: "OWNER" }] },
+      state: { connectionStatus: "ONLINE", lastSeenAt: new Date() },
+    };
+    const findFirst = vi.fn()
+      .mockResolvedValueOnce({ ...device, id: "another-plug" })
+      .mockResolvedValueOnce({ ...device, home: { members: [{ role: "MEMBER" }] } })
+      .mockResolvedValueOnce({ ...device, firmwareVersion: "esp32-telemetry-1" })
+      .mockResolvedValueOnce({ ...device, state: { ...device.state, lastSeenAt: new Date(0) } })
+      .mockResolvedValueOnce(device);
+    const create = vi.fn(async ({ data }) => ({ id: "command-id", status: "PENDING", ...data }));
+    const enqueue = vi.fn();
+    const service = new DevicesService({
+      device: { findFirst },
+      deviceCommand: { findUnique: vi.fn().mockResolvedValue(null) },
+      $transaction: async (callback: (transaction: unknown) => unknown) => callback({
+        deviceCommand: { create },
+        deviceCommandOutbox: { create: enqueue },
+      }),
+    } as unknown as PrismaService);
+    const request = () => service.requestRelayState("actor", deviceId, true, "request-0001");
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await expect(request()).rejects.toMatchObject({ response: { code: "RELAY_CONTROL_DISABLED" } });
+    }
+    await expect(request()).rejects.toMatchObject({ response: { code: "RELAY_DEVICE_OFFLINE" } });
+    expect(create).not.toHaveBeenCalled();
+    const response = await request();
+    expect(response).toMatchObject({ status: "PENDING", confirmed: false });
+    expect(response.expiresAt.getTime() - response.requestedAt.getTime()).toBe(10_000);
+    expect(enqueue).toHaveBeenCalledWith({ data: { commandId: "command-id" } });
+  });
+
+  it("reads command status only for the matching plug and authorized household", async () => {
+    const findFirst = vi.fn().mockResolvedValue(null);
+    const service = new DevicesService({ deviceCommand: { findFirst } } as unknown as PrismaService);
+    await expect(service.getRelayCommand("user-1", "plug-1", "command-1")).rejects.toMatchObject({
+      response: { code: "RELAY_COMMAND_NOT_FOUND" },
+    });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: "command-1", deviceId: "plug-1", device: { home: { members: { some: { userId: "user-1" } } } } },
+    });
   });
 
   it("scopes device filters inside the authenticated membership boundary", async () => {
