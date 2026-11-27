@@ -34,8 +34,9 @@ pnpm turbo run build --filter=@smart-home/iot-worker...
 node --env-file=apps/iot-worker/.env apps/iot-worker/dist/main.js
 ```
 
-Keep `TELEMETRY_ONLY=true` for the pilot. The MQTT identity needs subscribe
-access to the registered plug's telemetry and availability topics.
+Keep `TELEMETRY_ONLY=true` and set `MQTT_DEVICE_ID` to the registered plug's
+ID for the pilot. Give the worker's MQTT identity subscribe access to that
+plug's telemetry and availability topics.
 
 ## Required dashboard values
 

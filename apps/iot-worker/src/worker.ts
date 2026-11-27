@@ -63,11 +63,14 @@ export class IotWorker {
   async start() {
     this.mqtt.on("connect", () => {
       this.log("info", "mqtt_connected");
-      this.mqtt.subscribe([
-        "v1/devices/+/telemetry",
-        "v1/devices/+/availability",
-        ...(!this.config.TELEMETRY_ONLY ? ["v1/devices/+/state", "v1/devices/+/acks"] : [])
-      ], { qos: 1 });
+      const base = `v1/devices/${this.config.TELEMETRY_ONLY ? this.config.MQTT_DEVICE_ID : "+"}`;
+      const topics = [`${base}/telemetry`, `${base}/availability`];
+      if (!this.config.TELEMETRY_ONLY) topics.push(`${base}/state`, `${base}/acks`);
+      this.mqtt.subscribe(topics, { qos: 1 }, (error, subscriptions) => {
+        if (error || subscriptions?.some(({ qos }) => qos >= 128)) {
+          this.log("error", "mqtt_subscription_failed", { topics, message: error?.message });
+        }
+      });
     });
     this.mqtt.on("message", (topic, payload) => void this.handleMessage(topic, payload));
     this.mqtt.on("error", (error) => this.log("error", "mqtt_error", { message: error.message }));
@@ -86,7 +89,9 @@ export class IotWorker {
   private async handleMessage(topic: string, bytes: Buffer) {
     const parsedTopic = parseDeviceTopic(topic);
     if (!parsedTopic || parsedTopic.kind === "commands") return;
-    if (this.config.TELEMETRY_ONLY && !["telemetry", "availability"].includes(parsedTopic.kind)) return;
+    if (this.config.TELEMETRY_ONLY &&
+        (parsedTopic.deviceId !== this.config.MQTT_DEVICE_ID ||
+         !["telemetry", "availability"].includes(parsedTopic.kind))) return;
     if (!uuidSchema.safeParse(parsedTopic.deviceId).success) {
       this.log("warn", "invalid_device_topic", { topic }); return;
     }

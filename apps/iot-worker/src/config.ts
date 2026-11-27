@@ -7,6 +7,7 @@ const schema = z.object({
   MQTT_USERNAME: z.string().min(1),
   MQTT_PASSWORD: z.string().min(1),
   MQTT_CA_PEM: z.string().min(1).optional(),
+  MQTT_DEVICE_ID: z.uuid().optional(),
   MQTT_CLIENT_ID: z.string().min(3).max(120),
   SUPABASE_URL: z.string().url(),
   SUPABASE_SECRET_KEY: z.string().min(20),
@@ -15,6 +16,9 @@ const schema = z.object({
 }).superRefine((value,context)=>{
   if(value.NODE_ENV==="production"&&!value.MQTT_URL.startsWith("mqtts://")){
     context.addIssue({code:"custom",path:["MQTT_URL"],message:"Production MQTT must use TLS"});
+  }
+  if (value.TELEMETRY_ONLY && !value.MQTT_DEVICE_ID) {
+    context.addIssue({ code: "custom", path: ["MQTT_DEVICE_ID"], message: "Set the registered device ID for telemetry-only mode" });
   }
 });
 
