@@ -310,22 +310,16 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
                 <p className="power-gauge-value">{powerW == null ? "—" : number.format(powerW)}<small>W</small></p>
               </div>
             </div>
-            <div className="mt-7 flex flex-col items-center">
-              {telemetryOnly ? (
-                <p className="text-center text-sm text-white/80">{t("relayPendingBenchTest")}</p>
-              ) : (
-                <>
-                  <PowerToggle
-                    appearance="hero"
-                    deviceId={device.id}
-                    initialState={device.state?.relayState ?? false}
-                    demo={demoMode()}
-                    unavailable={demoMode() && device.state?.connectionStatus !== "ONLINE"}
-                    onConfirmed={() => void load(true)}
-                  />
-                  <p className="mt-3 text-center text-[.72rem] text-white/55">{t("confirmedRelay")} · {t("confirmedNotice")}</p>
-                </>
-              )}
+            <div className="mt-7 w-full max-w-sm">
+              <PowerToggle
+                appearance="buttons"
+                deviceId={device.id}
+                initialState={telemetryOnly ? null : device.state?.relayState ?? null}
+                demo={demoMode()}
+                unavailable={telemetryOnly || !online}
+                unavailableReason={telemetryOnly ? t("relayPendingBenchTest") : !online ? d("relayOffline") : undefined}
+                onConfirmed={() => void load(true)}
+              />
             </div>
           </div>
         </div>

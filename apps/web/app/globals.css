@@ -328,12 +328,27 @@ article.panel:hover, section.panel:hover, aside.panel:hover {
 .power-gauge-value { margin-bottom: .15rem; font-variant-numeric: tabular-nums; font-size: clamp(2.7rem, 6vw, 4.3rem); font-weight: 850; line-height: 1; letter-spacing: -.06em; }
 .power-gauge-value small { margin-left: .3rem; font-size: .28em; font-weight: 700; letter-spacing: 0; }
 .power-gauge-caption { font-size: .73rem; color: #b8d0bf; }
-.power-gauge-control { display: grid; width: 5.25rem; height: 5.25rem; place-items: center; border-radius: 50%; background: white; box-shadow: 0 0 0 8px rgba(255,255,255,.08), 0 13px 25px rgba(0,0,0,.15); }
-.power-gauge-control button { width: 100%; height: 100%; background: transparent !important; box-shadow: none !important; color: #269c4b !important; }
-.power-gauge-control button svg { width: 2.25rem; height: 2.25rem; }
-.power-toggle--hero { align-items: center; color: #eaf8ee; }
-.power-toggle--hero > span:not([role="alert"]) { color: #a7e69f; }
-.power-toggle--hero > button:hover:not(:disabled) { transform: scale(1.06); box-shadow: 0 0 0 12px rgba(255,255,255,.09), 0 20px 42px rgba(0,0,0,.28); }
+.relay-controls { padding: 1rem; border: 1px solid #c2e7f23d; border-radius: 1.15rem; background: #102e3c56; }
+.relay-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  min-height: 2.75rem;
+  padding: .5rem;
+  border: 1px solid transparent;
+  border-radius: .75rem;
+  font-size: .875rem;
+  font-weight: 750;
+  transition: background .2s ease, color .2s ease;
+}
+.relay-action svg { flex: none; }
+.relay-action-on { background: var(--lime); color: #213d49; }
+.relay-action-on:hover:not(:disabled) { background: #ffe8a2; }
+.relay-action-off { border-color: #d6eaf277; color: white; }
+.relay-action-off:hover:not(:disabled) { background: #d6eaf220; }
+.relay-action:focus-visible { outline-color: var(--lime); }
+.relay-action:disabled { border-color: #d6eaf238; background: #d6eaf215; color: #d6eaf2bb; }
 .setup-step { transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease; }
 .setup-step:hover { transform: translateY(-2px); border-color: #abdbb7; box-shadow: 0 14px 30px rgba(27, 78, 44, .07); }
 .auth-layout { background: var(--background); }

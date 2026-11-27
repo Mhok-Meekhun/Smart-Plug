@@ -1,8 +1,8 @@
 "use client";
 
-import { LoaderCircle, Power } from "lucide-react";
+import { CirclePower, LoaderCircle, Power } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useId, useState, useTransition } from "react";
 import { createClient } from "../lib/supabase/client";
 import { apiRequest } from "../lib/api-client";
 
@@ -12,28 +12,48 @@ export function PowerToggle({
   demo,
   onConfirmed,
   unavailable = false,
+  unavailableReason,
   appearance = "switch",
 }: {
   deviceId: string;
-  initialState: boolean;
+  initialState: boolean | null;
   demo: boolean;
   onConfirmed?: (relayState: boolean) => void;
   unavailable?: boolean;
-  appearance?: "switch" | "hero";
+  unavailableReason?: string | undefined;
+  appearance?: "switch" | "buttons";
 }) {
   const t = useTranslations("Device");
+  const headingId = useId();
+  const reasonId = useId();
   const [relayState, setRelayState] = useState(initialState);
   const [error, setError] = useState<string>();
+  const [waitingFor, setWaitingFor] = useState<boolean | null>(null);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
     setRelayState(initialState);
   }, [initialState]);
 
-  function toggle() {
+  useEffect(() => {
+    if (waitingFor == null) return;
+    if (initialState === waitingFor) {
+      setWaitingFor(null);
+      return;
+    }
+    // The device detail refreshes its reported state over Realtime or polling.
+    // Leave room for a final refresh after the API command's 30-second expiry.
+    const timer = setTimeout(() => {
+      setWaitingFor(null);
+      setError(t("relayUnconfirmed"));
+    }, 47_000);
+    return () => clearTimeout(timer);
+  }, [initialState, waitingFor, t]);
+
+  function requestState(desired: boolean) {
+    if (pending || waitingFor != null || unavailable || desired === relayState) return;
     setError(undefined);
     startTransition(async () => {
-      const desired = !relayState;
       try {
         if (demo) {
           await apiRequest(`/v1/devices/${deviceId}/commands/relay`, {
@@ -66,6 +86,8 @@ export function PowerToggle({
         if (command.confirmed && command.desiredRelayState === desired) {
           setRelayState(desired);
           onConfirmed?.(desired);
+        } else if (appearance === "buttons") {
+          setWaitingFor(desired);
         }
       } catch {
         setError(t("failed"));
@@ -73,27 +95,58 @@ export function PowerToggle({
     });
   }
 
+  if (appearance === "buttons") {
+    const busy = pending || waitingFor != null;
+
+    return (
+      <section aria-labelledby={headingId} className="relay-controls">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 id={headingId} className="flex items-center gap-2 text-sm font-bold">
+            <CirclePower size={17} aria-hidden="true" />
+            {t("relayControls")}
+          </h2>
+          <p role="status" className="text-xs font-semibold text-white/85">
+            {relayState == null ? t("relayUnknown") : t(relayState ? "relayOn" : "relayOff")}
+          </p>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button type="button" className="relay-action relay-action-on"
+            onClick={() => requestState(true)} disabled={busy || unavailable || relayState === true}
+            aria-describedby={unavailableReason ? reasonId : undefined}>
+            <Power size={16} aria-hidden="true" />
+            {t("relayTurnOn")}
+          </button>
+          <button type="button" className="relay-action relay-action-off"
+            onClick={() => requestState(false)} disabled={busy || unavailable || relayState === false}
+            aria-describedby={unavailableReason ? reasonId : undefined}>
+            <Power size={16} aria-hidden="true" />
+            {t("relayTurnOff")}
+          </button>
+        </div>
+        {unavailableReason ? <p id={reasonId} className="mt-3 text-sm leading-relaxed text-white/85">{unavailableReason}</p> : null}
+        {busy ? <p role="status" className="mt-3 flex items-center gap-2 text-sm text-white/85">
+          <LoaderCircle size={16} aria-hidden="true" className="animate-spin" />
+          {pending ? t("pending") : t("relayWaiting")}
+        </p> : null}
+        {error ? <p role="alert" className="mt-3 text-sm font-semibold text-red-100">{error}</p> : null}
+      </section>
+    );
+  }
+
   return (
-    <div className={`flex flex-col items-end gap-1 ${appearance === "hero" ? "power-toggle--hero" : ""}`}>
+    <div className="flex flex-col items-end gap-1">
       <button
         type="button"
-        onClick={toggle}
+        onClick={() => requestState(!relayState)}
         disabled={pending || unavailable}
-        role={appearance === "switch" ? "switch" : undefined}
-        aria-checked={appearance === "switch" ? relayState : undefined}
-        aria-pressed={appearance === "hero" ? relayState : undefined}
+        role="switch"
+        aria-checked={relayState ?? false}
         aria-label={`${relayState ? t("on") : t("off")}: ${pending ? t("pending") : ""}`}
-        className={appearance === "hero"
-          ? `grid size-20 place-items-center rounded-full bg-white text-[#249b47] shadow-[0_0_0_8px_rgba(255,255,255,.07),0_16px_35px_rgba(0,0,0,.24)] transition hover:scale-105 disabled:opacity-60 ${relayState ? "" : "text-[#7c8f84]"}`
-          : `relative h-8 w-13 rounded-full transition-colors duration-300 ${relayState ? "bg-[#259d48]" : "bg-[#dce3de]"} disabled:opacity-60`}
+        className={`relative h-8 w-13 rounded-full transition-colors duration-300 ${relayState ? "bg-[#259d48]" : "bg-[#dce3de]"} disabled:opacity-60`}
       >
-        {appearance === "hero" ? (
-          pending ? <LoaderCircle size={31} className="animate-spin" aria-hidden="true" /> : <Power size={32} aria-hidden="true" />
-        ) : (
-          <span className={`absolute top-1 grid size-6 place-items-center rounded-full bg-white shadow-sm transition-[left] duration-300 ${relayState ? "left-6" : "left-1"}`}>
-            {pending ? <LoaderCircle size={13} className="animate-spin text-[#249b47]" aria-hidden="true" /> : null}
-          </span>
-        )}
+        <span className={`absolute top-1 grid size-6 place-items-center rounded-full bg-white shadow-sm transition-[left] duration-300 ${relayState ? "left-6" : "left-1"}`}>
+          {pending ? <LoaderCircle size={13} className="animate-spin text-[#249b47]" aria-hidden="true" /> : null}
+        </span>
       </button>
       <span
         className={`text-[.68rem] font-bold ${relayState ? "text-[#18813a]" : "text-[#7a847c]"}`}
