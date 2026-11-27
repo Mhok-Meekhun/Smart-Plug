@@ -79,7 +79,7 @@ export function PowerToggle({
   }, [deviceId, onConfirmed, t, waitingFor]);
 
   function requestState(desired: boolean) {
-    if (pending || waitingFor != null || unavailable || desired === relayState) return;
+    if (pending || waitingFor != null || unavailable || (appearance !== "buttons" && desired === relayState)) return;
     setError(undefined);
     startTransition(async () => {
       try {
@@ -123,13 +123,13 @@ export function PowerToggle({
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <button type="button" className="relay-action relay-action-on"
-            onClick={() => requestState(true)} disabled={busy || unavailable || relayState === true}
+            onClick={() => requestState(true)} disabled={busy || unavailable}
             aria-describedby={unavailableReason ? reasonId : undefined}>
             <Power size={16} aria-hidden="true" />
             {t("relayTurnOn")}
           </button>
           <button type="button" className="relay-action relay-action-off"
-            onClick={() => requestState(false)} disabled={busy || unavailable || relayState === false}
+            onClick={() => requestState(false)} disabled={busy || unavailable}
             aria-describedby={unavailableReason ? reasonId : undefined}>
             <Power size={16} aria-hidden="true" />
             {t("relayTurnOff")}

@@ -12,3 +12,5 @@
 #define RUAN_MQTT_CA ""
 // Keep at 0 until the single-device cloud relay pilot is ready.
 #define RUAN_ENABLE_CLOUD_RELAY 0
+// Set to 0 only for a module verified as active-high on an isolated bench.
+#define RUAN_RELAY_ACTIVE_LOW 1

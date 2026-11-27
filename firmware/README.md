@@ -58,7 +58,9 @@ Confirm the specific module's input levels separately. GPIO5 is a strapping
 pin, so check the module's effect on D5 and the relay state during power-up
 and reset, before firmware configures the pin.
 
-`RELAY_PIN` defaults to 5 and `RELAY_ACTIVE_LOW` defaults to true.
+`RELAY_PIN` defaults to 5 and `RUAN_RELAY_ACTIVE_LOW` defaults to `1` (ON at
+LOW). Set `RUAN_RELAY_ACTIVE_LOW` to `0` in `wifi_secrets.h` only if the
+module is verified to energize at HIGH and release at LOW.
 `RELAY_BUTTON_PIN` is unset on the buttonless prototype. The optional button
 mode uses `ENABLE_LOCAL_RELAY_TEST` with a configured momentary input.
 
@@ -82,10 +84,12 @@ For an isolated low-voltage bench with the ESP32 and relay module only,
 disconnect the AC supply, load, and mains-connected assembly. Build with
 `ENABLE_RELAY_SERIAL_BENCH_TEST = true` and keep
 `ENABLE_LOCAL_RELAY_TEST = false`. Open Serial Monitor at 115200 baud,
-choose a line ending, and send `RELAY TEST`. The firmware requests ON for
-one second, then OFF. Repeated commands during the pulse are ignored.
-Wi-Fi, the dashboard, and PZEM polling are skipped in this build. Restore
-the default build after the bench check and before returning to meter tests.
+choose a line ending, and send `RELAY ON` and `RELAY OFF`. Each command
+reports the sampled GPIO level and stays in effect until another command or
+reset. Compare both levels with the module's switching indicator and the
+actual relay action. End the bench check with `RELAY OFF` and restore the
+default build before returning to meter tests. Wi-Fi, the dashboard, and
+PZEM polling are skipped in the bench build.
 
 ## Local Wi-Fi dashboard and relay control
 
@@ -170,10 +174,10 @@ Keep `RUAN_ENABLE_CLOUD_RELAY` at its default `0` during telemetry tests.
    GPIO state. The app identifies the GPIO signal as its source. Verify
    physical relay operation separately on the reviewed hardware setup.
 
-The ESP32 requires a fresh meter sample to turn on. It requests OFF on
-startup, when it detects loss of Wi-Fi or MQTT, when the meter sample
-becomes stale, and after 30 seconds of continuous ON. It rejects expired
-or retained commands and ON requests issued before its current MQTT
+The ESP32 requires a fresh meter sample for a cloud ON command. Cloud mode
+requests ON at startup and holds the last requested state until a new command
+or restart, including during loss of Wi-Fi, MQTT, or meter readings. The
+ESP32 rejects expired or retained commands and ON requests issued before its current MQTT
 subscription. The cloud mode takes exclusive ownership of the output,
 disabling the LAN relay controls while it is selected. A successful
 acknowledgement verifies GPIO level only. The circuit has no relay-contact

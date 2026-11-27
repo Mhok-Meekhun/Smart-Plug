@@ -28,7 +28,10 @@
 #define RUAN_MQTT_CA ""
 #endif
 #ifndef RUAN_ENABLE_CLOUD_RELAY
-#define RUAN_ENABLE_CLOUD_RELAY 0
+#define RUAN_ENABLE_CLOUD_RELAY 1
+#endif
+#ifndef RUAN_RELAY_ACTIVE_LOW
+#define RUAN_RELAY_ACTIVE_LOW 1
 #endif
 
 constexpr int I2C_SDA_PIN = 21, I2C_SCL_PIN = 22;
@@ -58,9 +61,10 @@ constexpr bool WEB_RELAY_ENABLED = !CLOUD_RELAY_ENABLED && !ENABLE_RELAY_SERIAL_
                                    WIFI_SSID[0] != '\0' && sizeof(RELAY_CONTROL_TOKEN) == 33;
 constexpr int RELAY_PIN = 5; // D5 on the DOIT ESP32; verify relay stays OFF through reset.
 constexpr int RELAY_BUTTON_PIN = -1; // Button GPIO has not been confirmed.
-constexpr bool RELAY_ACTIVE_LOW = true;
+static_assert(RUAN_RELAY_ACTIVE_LOW == 0 || RUAN_RELAY_ACTIVE_LOW == 1,
+              "RUAN_RELAY_ACTIVE_LOW must be 0 or 1.");
+constexpr bool RELAY_ACTIVE_LOW = RUAN_RELAY_ACTIVE_LOW == 1;
 constexpr unsigned long BUTTON_DEBOUNCE_MS = 40, RELAY_LIMIT_MS = 30000;
-constexpr unsigned long SERIAL_BENCH_PULSE_MS = 1000;
 
 constexpr bool isAvailableControlPin(int pin) {
   return pin == 4 || pin == 13 || pin == 14 || pin == 18 || pin == 19 ||
@@ -94,6 +98,7 @@ unsigned long lastSample = 0, lastPageChange = 0, lastWifiAttempt = 0;
 uint8_t page = 0;
 
 bool relayTaskStarted = false;
+bool serialBenchReady = false;
 std::atomic<bool> relayRequestedOn{false};
 enum class RelayCommand { None, TurnOn, TurnOff };
 std::atomic<RelayCommand> pendingWebCommand{RelayCommand::None};
@@ -308,23 +313,30 @@ void requestRelay(bool on) {
   if (on) relayOnSince = millis();
 }
 
-void serviceSerialBenchRelay() {
-  if (relayRequestedOn && millis() - relayOnSince >= SERIAL_BENCH_PULSE_MS) {
-    requestRelay(false);
-    Serial.println("Relay GPIO requested OFF");
-  }
+bool relayOutputOn() {
+  return gpio_get_level(static_cast<gpio_num_t>(RELAY_PIN)) == (RELAY_ACTIVE_LOW ? LOW : HIGH);
+}
 
-  static char command[sizeof("RELAY TEST")];
+void serviceSerialBenchRelay() {
+  static char command[sizeof("RELAY OFF")];
   static size_t length = 0;
   static bool tooLong = false;
   for (int i = 0; i < 32 && Serial.available(); ++i) {
     const int byte = Serial.read();
     if (byte == '\r' || byte == '\n') {
       command[length] = '\0';
-      if (!tooLong && length == sizeof(command) - 1 &&
-          strcmp(command, "RELAY TEST") == 0 && !relayRequestedOn) {
-        Serial.println("Relay GPIO requesting ON for 1 second");
-        requestRelay(true);
+      const bool turnOn = length == sizeof("RELAY ON") - 1 && strcmp(command, "RELAY ON") == 0;
+      const bool turnOff = length == sizeof("RELAY OFF") - 1 && strcmp(command, "RELAY OFF") == 0;
+      if (!tooLong && (turnOn || turnOff)) {
+        requestRelay(turnOn);
+        if (relayOutputOn() == turnOn) {
+          Serial.printf("Relay GPIO%d %s (%s)\n", RELAY_PIN,
+                        gpio_get_level(static_cast<gpio_num_t>(RELAY_PIN)) == HIGH ? "HIGH" : "LOW",
+                        turnOn ? "ON" : "OFF");
+        } else {
+          requestRelay(false);
+          Serial.println("Relay GPIO readback mismatch; requested OFF.");
+        }
       }
       length = 0;
       tooLong = false;
@@ -377,10 +389,6 @@ void serviceWebRelay(unsigned long now) {
   }
 }
 
-bool relayOutputOn() {
-  return gpio_get_level(static_cast<gpio_num_t>(RELAY_PIN)) == (RELAY_ACTIVE_LOW ? LOW : HIGH);
-}
-
 uint64_t cloudEpochMs() {
   timeval clock{};
   gettimeofday(&clock, nullptr);
@@ -388,13 +396,10 @@ uint64_t cloudEpochMs() {
   return static_cast<uint64_t>(clock.tv_sec) * 1000ULL + clock.tv_usec / 1000;
 }
 
-void serviceCloudRelay(unsigned long now) {
+void serviceCloudRelay() {
   static uint64_t lastIssuedMs = 0;
   static char lastId[37] = "";
   const bool connected = cloudRelayReady && WiFi.status() == WL_CONNECTED;
-  if (relayRequestedOn && (!connected || !hasFreshRelayReading() || now - relayOnSince >= RELAY_LIMIT_MS)) {
-    requestRelay(false);
-  }
 
   CloudRelayRequest command{};
   if (xQueueReceive(cloudRequests, &command, 0) != pdTRUE ||
@@ -416,7 +421,6 @@ void serviceCloudRelay(unsigned long now) {
     if (command.turnOn && !hasFreshRelayReading()) {
       result.error = hasFreshReading() ? "METER_PF_INVALID" : "METER_READING_STALE";
     } else {
-      // An already-on command must never refresh the maximum ON duration.
       if (!command.turnOn || !relayRequestedOn) requestRelay(command.turnOn);
       if (relayOutputOn() != command.turnOn) {
         requestRelay(false);
@@ -429,12 +433,12 @@ void serviceCloudRelay(unsigned long now) {
 }
 
 void runRelayTask(void*) {
-  // Keep the software timeout independent of HTTP and UART wait times.
+  // Keep relay control independent of HTTP and UART wait times.
   while (true) {
     const unsigned long now = millis();
     if (ENABLE_LOCAL_RELAY_TEST) serviceLocalButton(now);
     if (WEB_RELAY_ENABLED) serviceWebRelay(now);
-    if (CLOUD_RELAY_ENABLED) serviceCloudRelay(now);
+    if (CLOUD_RELAY_ENABLED) serviceCloudRelay();
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
@@ -891,13 +895,18 @@ void serviceCloudMqtt(bool wifiConnected) {
 void setup() {
   Serial.begin(115200);
   if (ENABLE_LOCAL_RELAY_TEST || ENABLE_RELAY_SERIAL_BENCH_TEST || WEB_RELAY_ENABLED || CLOUD_RELAY_ENABLED) {
-    // Preload the inactive level before enabling the output driver.
-    requestRelay(false);
+    // Cloud control starts ON; the other control modes start OFF.
+    requestRelay(CLOUD_RELAY_ENABLED);
     pinMode(RELAY_PIN, OUTPUT);
   }
   if (ENABLE_RELAY_SERIAL_BENCH_TEST) {
     Serial.println("Isolated low-voltage bench only. Keep mains and AC load disconnected.");
-    Serial.println("Send RELAY TEST with a line ending for one 1-second GPIO pulse.");
+    serialBenchReady = gpio_input_enable(static_cast<gpio_num_t>(RELAY_PIN)) == ESP_OK;
+    if (serialBenchReady) {
+      Serial.println("Send RELAY ON or RELAY OFF with a line ending. Leave the relay OFF after testing.");
+    } else {
+      Serial.println("Relay GPIO readback could not start; requested OFF.");
+    }
     return;
   }
   Serial.printf("PZEM UART2: RX GPIO%d, TX GPIO%d, %d baud, address 0x%02X\n",
@@ -952,7 +961,7 @@ void setup() {
 
 void loop() {
   if (ENABLE_RELAY_SERIAL_BENCH_TEST) {
-    serviceSerialBenchRelay();
+    if (serialBenchReady) serviceSerialBenchRelay();
     delay(1);
     return;
   }
