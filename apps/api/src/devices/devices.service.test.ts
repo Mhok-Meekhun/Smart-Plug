@@ -3,6 +3,34 @@ import type { PrismaService } from "../database/prisma.service.js";
 import { DevicesService } from "./devices.service.js";
 
 describe("DevicesService", () => {
+  it("registers telemetry-only plugs without inventing online status or measurements", async () => {
+    const findFirst = vi.fn().mockResolvedValue({ id: "home-1" });
+    const create = vi.fn().mockResolvedValue({ id: "device-1", name: "ESP32" });
+    const prisma = { home: { findFirst }, device: { create } } as unknown as PrismaService;
+    const service = new DevicesService(prisma);
+    const input = { homeId: "home-1", roomId: "room-1", name: "ESP32" };
+
+    await expect(service.registerPhysicalDevice("owner-1", input)).resolves.toMatchObject({ id: "device-1" });
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "home-1", members: { some: { userId: "owner-1", role: "OWNER" } }, rooms: { some: { id: "room-1" } } }
+    }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ type: "TELEMETRY_SMART_PLUG", state: { create: { connectionStatus: "OFFLINE" } } })
+    }));
+    findFirst.mockResolvedValueOnce(null);
+    await expect(service.registerPhysicalDevice("other-user", input)).rejects.toThrow();
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects cloud relay commands for telemetry-only hardware", async () => {
+    const findFirst = vi.fn().mockResolvedValue({ id: "device-1", type: "TELEMETRY_SMART_PLUG" });
+    const transaction = vi.fn();
+    const prisma = { device: { findFirst }, $transaction: transaction } as unknown as PrismaService;
+    await expect(new DevicesService(prisma).requestRelayState("owner-1", "device-1", true, "request-123"))
+      .rejects.toMatchObject({ response: { code: "RELAY_CONTROL_DISABLED" } });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it("loads device detail only through the authenticated membership boundary", async () => {
     const findFirst = vi.fn().mockResolvedValue({
       id: "0af11e45-676d-4ac2-8d45-867ddb0e0e90",

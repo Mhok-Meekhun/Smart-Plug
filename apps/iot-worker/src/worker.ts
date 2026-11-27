@@ -55,7 +55,8 @@ export class IotWorker {
       clean: false,
       reconnectPeriod: 1_000,
       connectTimeout: 20_000,
-      rejectUnauthorized: true
+      rejectUnauthorized: true,
+      ...(config.MQTT_CA_PEM ? { ca: config.MQTT_CA_PEM.replaceAll("\\n", "\n") } : {})
     });
   }
 
@@ -64,9 +65,8 @@ export class IotWorker {
       this.log("info", "mqtt_connected");
       this.mqtt.subscribe([
         "v1/devices/+/telemetry",
-        "v1/devices/+/state",
-        "v1/devices/+/acks",
-        "v1/devices/+/availability"
+        "v1/devices/+/availability",
+        ...(!this.config.TELEMETRY_ONLY ? ["v1/devices/+/state", "v1/devices/+/acks"] : [])
       ], { qos: 1 });
     });
     this.mqtt.on("message", (topic, payload) => void this.handleMessage(topic, payload));
@@ -86,6 +86,7 @@ export class IotWorker {
   private async handleMessage(topic: string, bytes: Buffer) {
     const parsedTopic = parseDeviceTopic(topic);
     if (!parsedTopic || parsedTopic.kind === "commands") return;
+    if (this.config.TELEMETRY_ONLY && !["telemetry", "availability"].includes(parsedTopic.kind)) return;
     if (!uuidSchema.safeParse(parsedTopic.deviceId).success) {
       this.log("warn", "invalid_device_topic", { topic }); return;
     }
@@ -186,9 +187,11 @@ export class IotWorker {
   private async runOutbox() {
     while (!this.stopping) {
       try {
-        await this.executeDueSchedule();
-        await this.publishOne();
-        await this.timeoutExpired();
+        if (!this.config.TELEMETRY_ONLY) {
+          await this.executeDueSchedule();
+          await this.publishOne();
+          await this.timeoutExpired();
+        }
         if (Date.now() - this.lastMaintenanceAt >= 60_000) {
           await this.runMaintenance();
           this.lastMaintenanceAt = Date.now();

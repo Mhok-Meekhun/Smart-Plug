@@ -6,6 +6,7 @@ import { ApplianceIcon } from "./appliance-icon";
 export type FloorDevice = {
   id: string;
   name: string;
+  type?: string;
   roomId: string | null;
   state: { connectionStatus: string; relayState: boolean; powerW: number | null } | null;
 };
@@ -84,7 +85,10 @@ function FloorDeviceItem({ device, thai, formatter }: {
 }) {
   const online = device.state?.connectionStatus === "ONLINE";
   const active = online && device.state?.relayState;
-  const status = online ? active ? (thai ? "เปิด" : "On") : (thai ? "ปิด" : "Off") : (thai ? "ออฟไลน์" : "Offline");
+  const telemetryOnly = device.type === "TELEMETRY_SMART_PLUG";
+  const status = online
+    ? telemetryOnly ? (thai ? "ออนไลน์" : "Online") : active ? (thai ? "เปิด" : "On") : (thai ? "ปิด" : "Off")
+    : (thai ? "ออฟไลน์" : "Offline");
   return (
     <li>
       <Link href={`/devices/${device.id}`} className="floor-device" aria-label={`${device.name} · ${status}`}>

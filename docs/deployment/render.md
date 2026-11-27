@@ -21,6 +21,22 @@ credentials are available.
 5. Add the web URL and `/auth/callback` equivalent to the Supabase Auth redirect
    allow list before enabling production sign-in.
 
+The web service builds in connected mode for the physical pilot. Its device
+registration requires an authenticated owner. Review the physical pilot
+setup in [the firmware guide](../../firmware/README.md#ruan-ai-live-readings-pilot).
+
+To run the pilot worker on a computer, copy `apps/iot-worker/.env.example`
+to `apps/iot-worker/.env` and fill in the worker-only values. From the
+repository root run:
+
+```sh
+pnpm turbo run build --filter=@smart-home/iot-worker...
+node --env-file=apps/iot-worker/.env apps/iot-worker/dist/main.js
+```
+
+Keep `TELEMETRY_ONLY=true` for the pilot. The MQTT identity needs subscribe
+access to the registered plug's telemetry and availability topics.
+
 ## Required dashboard values
 
 | Service | Variable | Source |

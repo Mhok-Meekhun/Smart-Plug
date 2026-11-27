@@ -31,7 +31,7 @@ const deviceListQuerySchema = z
   .strict();
 
 const relayCommandBodySchema = z.object({ relayState: z.boolean() }).strict();
-const simulatedDeviceBodySchema = z
+const registerDeviceBodySchema = z
   .object({
     homeId: z.string().uuid(),
     roomId: z.string().uuid(),
@@ -82,7 +82,19 @@ export class DevicesController {
   ) {
     return this.devices.createSimulatedDevice(
       user.id,
-      parseRequest(simulatedDeviceBodySchema, rawBody),
+      parseRequest(registerDeviceBodySchema, rawBody),
+    );
+  }
+
+  @Post("physical")
+  @ApiCreatedResponse({ description: "Physical smart plug registered for telemetry" })
+  registerPhysical(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() rawBody: unknown,
+  ) {
+    return this.devices.registerPhysicalDevice(
+      user.id,
+      parseRequest(registerDeviceBodySchema, rawBody),
     );
   }
 

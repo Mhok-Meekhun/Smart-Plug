@@ -58,6 +58,7 @@ type EnergyResponse = {
 export function ConnectedDashboard({ demo }: { demo: boolean }) {
   const t = useTranslations("Dashboard");
   const d = useTranslations("Device");
+  const detailText = useTranslations("DeviceDetail");
   const locale = useLocale();
   const [homes, setHomes] = useState<Home[]>([]);
   const [selectedHomeId, setSelectedHomeId] = useState("");
@@ -391,17 +392,19 @@ export function ConnectedDashboard({ demo }: { demo: boolean }) {
                           {online ? d("online") : d("offline")}
                         </span>
                         <span className="ml-auto text-sm font-black tabular-nums">
-                          {number.format(device.state?.powerW ?? 0)} W
+                          {device.state?.powerW == null ? "—" : `${number.format(device.state.powerW)} W`}
                         </span>
                       </div>
                     </div>
-                    <PowerToggle
+                    {device.type === "TELEMETRY_SMART_PLUG" ? (
+                      <span className="text-xs font-bold text-[#315f72]">{detailText("telemetryOnly")}</span>
+                    ) : <PowerToggle
                       deviceId={device.id}
                       initialState={device.state?.relayState ?? false}
                       demo={demo}
                       unavailable={demo && !online}
                       onConfirmed={() => void load(true)}
-                    />
+                    />}
                   </article>
                 );
               })

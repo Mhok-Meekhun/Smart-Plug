@@ -38,6 +38,7 @@ type Device = {
 export function DeviceList({ initialRoomId = "" }: { initialRoomId?: string }) {
   const t = useTranslations("Devices");
   const deviceText = useTranslations("Device");
+  const detailText = useTranslations("DeviceDetail");
   const locale = useLocale();
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,13 +181,15 @@ export function DeviceList({ initialRoomId = "" }: { initialRoomId?: string }) {
                       {device.room ? roomName(device.room, locale) : t("noRoom")}
                     </p>
                   </div>
-                  <PowerToggle
+                  {device.type === "TELEMETRY_SMART_PLUG" ? (
+                    <span className="text-xs font-bold text-[#315f72]">{detailText("telemetryOnly")}</span>
+                  ) : <PowerToggle
                     deviceId={device.id}
                     initialState={Boolean(device.state?.relayState)}
                     demo={demoMode()}
                     unavailable={demoMode() && !online}
                     onConfirmed={() => load(true)}
-                  />
+                  />}
                 </div>
                 <div className="mt-5 flex items-center justify-between rounded-2xl bg-[#f6f9f6] p-3.5">
                   <span

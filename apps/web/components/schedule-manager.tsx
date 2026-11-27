@@ -95,7 +95,7 @@ export function ScheduleManager() {
       apiRequest<Schedule[]>("/v1/schedules"),
     ])
       .then(([deviceItems, scheduleItems]) => {
-        setDevices(deviceItems);
+        setDevices(deviceItems.filter((device) => device.type !== "TELEMETRY_SMART_PLUG"));
         setSchedules(scheduleItems);
       })
       .catch(() => setLoadFailed(true))

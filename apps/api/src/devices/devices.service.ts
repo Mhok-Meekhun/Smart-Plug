@@ -13,6 +13,13 @@ export interface DeviceListFilters {
   connectionStatus?: DeviceConnectionStatus | undefined;
 }
 
+interface DeviceRegistration {
+  homeId: string;
+  roomId: string;
+  name: string;
+  icon?: string | undefined;
+}
+
 @Injectable()
 export class DevicesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -33,6 +40,11 @@ export class DevicesService {
         createdAt: true,
         home: { select: { name: true, timezone: true, currency: true } },
         room: { select: { name: true } },
+        telemetry: {
+          orderBy: [{ deviceTimestamp: "desc" }, { serverReceivedAt: "desc" }],
+          take: 1,
+          select: { powerFactor: true, serverReceivedAt: true },
+        },
         state: {
           select: {
             connectionStatus: true,
@@ -53,8 +65,11 @@ export class DevicesService {
         messageKey: "errors.deviceNotFound",
       });
     }
+    const { telemetry, ...details } = device;
     return {
-      ...device,
+      ...details,
+      powerFactor: telemetry?.[0]?.powerFactor?.toNumber() ?? null,
+      measurementReceivedAt: telemetry?.[0]?.serverReceivedAt ?? null,
       ratedCurrentA: device.ratedCurrentA.toNumber(),
       state: device.state
         ? {
@@ -117,15 +132,7 @@ export class DevicesService {
     }));
   }
 
-  async createSimulatedDevice(
-    userId: string,
-    input: {
-      homeId: string;
-      roomId: string;
-      name: string;
-      icon?: string | undefined;
-    },
-  ) {
+  private async requireOwnedRoom(userId: string, input: DeviceRegistration) {
     const authorizedHome = await this.prisma.home.findFirst({
       where: {
         id: input.homeId,
@@ -141,6 +148,27 @@ export class DevicesService {
       });
     }
 
+  }
+
+  async registerPhysicalDevice(userId: string, input: DeviceRegistration) {
+    await this.requireOwnedRoom(userId, input);
+    return this.prisma.device.create({
+      data: {
+        hardwareId: `physical:${randomUUID()}`,
+        homeId: input.homeId,
+        roomId: input.roomId,
+        name: input.name,
+        icon: input.icon ?? "plug",
+        type: "TELEMETRY_SMART_PLUG",
+        lifecycleStatus: "ACTIVE",
+        state: { create: { connectionStatus: "OFFLINE" } },
+      },
+      select: { id: true, name: true },
+    });
+  }
+
+  async createSimulatedDevice(userId: string, input: DeviceRegistration) {
+    await this.requireOwnedRoom(userId, input);
     const now = new Date();
     const device = await this.prisma.$transaction(async (transaction) => {
       const created = await transaction.device.create({
@@ -216,6 +244,13 @@ export class DevicesService {
       throw new NotFoundException({
         code: "DEVICE_NOT_FOUND",
         messageKey: "errors.deviceNotFound",
+      });
+    }
+
+    if (device.type === "TELEMETRY_SMART_PLUG") {
+      throw new ConflictException({
+        code: "RELAY_CONTROL_DISABLED",
+        messageKey: "errors.relayControlDisabled",
       });
     }
 

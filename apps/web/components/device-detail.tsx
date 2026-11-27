@@ -32,6 +32,8 @@ type Device = {
   type: string;
   firmwareVersion: string | null;
   ratedCurrentA: number;
+  powerFactor?: number | null;
+  measurementReceivedAt?: string | null;
   lifecycleStatus: string;
   home: { name: string; timezone: string; currency: string };
   room: { name: string } | null;
@@ -143,7 +145,11 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
       .on("broadcast", { event: "device.availability" }, refresh)
       .on("broadcast", { event: "command.updated" }, refresh)
       .subscribe();
+    const fallback = setInterval(() => {
+      if (!document.hidden) refresh();
+    }, 15_000);
     return () => {
+      clearInterval(fallback);
       if (timer) clearTimeout(timer);
       void client.removeChannel(channel);
     };
@@ -179,8 +185,13 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
     );
 
   const online = device.state?.connectionStatus === "ONLINE";
-  const powerW = online ? device.state?.powerW : null;
   const simulated = device.type === "SIMULATED_SMART_PLUG";
+  const telemetryOnly = device.type === "TELEMETRY_SMART_PLUG";
+  const measurementAt = device.measurementReceivedAt;
+  const fresh = !telemetryOnly || (measurementAt != null && Date.now() - Date.parse(measurementAt) < 20_000);
+  const readings = telemetryOnly && !fresh ? null : device.state;
+  const powerW = online ? readings?.powerW : null;
+  const powerFactor = online && fresh ? device.powerFactor : null;
   const chartData = (energy?.points ?? []).map((point) => ({
     label: new Intl.DateTimeFormat(locale, {
       day: "numeric",
@@ -197,32 +208,36 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
   const metrics = [
     {
       label: t("voltage"),
-      value: device.state?.voltageV,
+      value: readings?.voltageV,
       unit: "V",
       icon: Zap,
       tone: "bg-[#e2f0f5] text-[#218d40]",
     },
     {
       label: t("current"),
-      value: device.state?.currentA,
+      value: readings?.currentA,
       unit: "A",
       icon: Activity,
       tone: "bg-[#eaf4fb] text-[#2678b9]",
     },
     {
       label: t("power"),
-      value: device.state?.powerW,
+      value: readings?.powerW,
       unit: "W",
       icon: Gauge,
       tone: "bg-[#fff5df] text-[#a96b0a]",
     },
     {
       label: t("meterEnergy"),
-      value: device.state?.energyKwh,
+      value: readings?.energyKwh,
       unit: "kWh",
       icon: CircleGauge,
       tone: "bg-[#f0ebfb] text-[#69449e]",
     },
+    ...(telemetryOnly ? [
+      { label: t("powerFactor"), value: powerFactor, unit: "", icon: Activity, tone: "bg-[#eaf4fb] text-[#2678b9]" },
+      { label: t("equivalentAngle"), value: powerFactor == null ? null : Math.round(Math.acos(powerFactor) * 1800 / Math.PI) / 10, unit: "°", icon: Gauge, tone: "bg-[#fff5df] text-[#a96b0a]" },
+    ] : []),
   ];
 
   return (
@@ -249,6 +264,8 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
                   <span className="rounded-full bg-violet-200/15 px-3 py-1 text-xs font-bold text-violet-100">
                     {t("simulated")}
                   </span>
+                ) : telemetryOnly ? (
+                  <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-bold">{t("telemetryOnly")}</span>
                 ) : null}
               </div>
               <p className="mt-3 flex flex-wrap items-center gap-2 text-sm text-white/65">
@@ -269,6 +286,10 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
                     : t("never")}
                 </span>
               </div>
+              {telemetryOnly && <p className="mt-3 text-xs font-bold text-white/75">
+                {!measurementAt ? t("awaitingReading") : t("lastMeasurement", { time: dateTime.format(new Date(measurementAt)) })}
+                {measurementAt && !fresh ? ` · ${t("readingStale")}` : ""}
+              </p>}
             </div>
           </div>
           <div className="flex flex-col items-center">
@@ -290,15 +311,21 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
               </div>
             </div>
             <div className="mt-7 flex flex-col items-center">
-              <PowerToggle
-                appearance="hero"
-                deviceId={device.id}
-                initialState={device.state?.relayState ?? false}
-                demo={demoMode()}
-                unavailable={demoMode() && device.state?.connectionStatus !== "ONLINE"}
-                onConfirmed={() => void load(true)}
-              />
-              <p className="mt-3 text-center text-[.72rem] text-white/55">{t("confirmedRelay")} · {t("confirmedNotice")}</p>
+              {telemetryOnly ? (
+                <p className="text-center text-sm text-white/80">{t("relayPendingBenchTest")}</p>
+              ) : (
+                <>
+                  <PowerToggle
+                    appearance="hero"
+                    deviceId={device.id}
+                    initialState={device.state?.relayState ?? false}
+                    demo={demoMode()}
+                    unavailable={demoMode() && device.state?.connectionStatus !== "ONLINE"}
+                    onConfirmed={() => void load(true)}
+                  />
+                  <p className="mt-3 text-center text-[.72rem] text-white/55">{t("confirmedRelay")} · {t("confirmedNotice")}</p>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -362,7 +389,13 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
           </div>
         </section>
         <div className="space-y-5">
-          <section className="panel p-5 md:p-6">
+          {telemetryOnly ? (
+            <section className="panel p-5 md:p-6">
+              <h2 className="font-black">Device ID</h2>
+              <p className="mt-1 text-xs text-[#556573]">{t("deviceIdHelp")}</p>
+              <code className="mt-3 block break-all rounded-xl bg-[#f2f5f2] p-3 text-sm">{device.id}</code>
+            </section>
+          ) : <section className="panel p-5 md:p-6">
             <div className="flex items-center gap-3">
               <span className="grid size-10 place-items-center rounded-xl bg-[#e2f0f5] text-[#218d40]">
                 <CalendarClock size={19} />
@@ -391,13 +424,13 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
             >
               {t("manageSchedules")}
             </Link>
-          </section>
+          </section>}
           <section className="panel flex gap-3 p-5 text-sm leading-6 text-[#4f6c56]">
             <ShieldCheck className="mt-0.5 shrink-0 text-[#219442]" size={20} />
             <div>
               <p className="font-black">{t("safeStateTitle")}</p>
               <p className="mt-1 text-xs leading-5">
-                {simulated ? t("simulatedStateBody") : t("physicalStateBody")}
+                {telemetryOnly ? t("phaseUnavailable") : simulated ? t("simulatedStateBody") : t("physicalStateBody")}
               </p>
             </div>
           </section>

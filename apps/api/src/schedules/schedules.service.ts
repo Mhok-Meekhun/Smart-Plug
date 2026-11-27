@@ -99,12 +99,19 @@ export class SchedulesService {
         id: input.deviceId,
         home: { members: { some: { userId, role: "OWNER" } } },
       },
-      select: { id: true },
+      select: { id: true, type: true },
     });
     if (!device) {
       throw new NotFoundException({
         code: "DEVICE_NOT_FOUND",
         messageKey: "errors.deviceNotFound",
+      });
+    }
+
+    if (device.type === "TELEMETRY_SMART_PLUG") {
+      throw new BadRequestException({
+        code: "RELAY_CONTROL_DISABLED",
+        messageKey: "errors.relayControlDisabled",
       });
     }
 

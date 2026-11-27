@@ -13,9 +13,9 @@ implemented. GPIO assignments, interface voltage compatibility, and safe
 isolation must be checked for the actual hardware before integration. Have a
 qualified electrical reviewer approve the setup before any mains connection.
 
-## LCD test
+## Combined PZEM, LCD, and relay firmware
 
-`esp32_lcd_test/esp32_lcd_test.ino` is a separate LCD bring-up sketch. Install
+`esp32_lcd_test/esp32_lcd_test.ino` is the combined Arduino sketch. Install
 **LiquidCrystal I2C by Frank de Brabander** in Arduino IDE Library Manager.
 For PZEM readings, also install **PZEM-004T-v30 by mandulaj**.
 The sketch uses GPIO 21 (SDA), GPIO 22 (SCL), and address `0x27` as configurable
@@ -30,19 +30,117 @@ Have the interface reviewed and use appropriate level translation when needed.
 Do not connect a computer to a mains-connected prototype until the complete
 isolation arrangement has been reviewed by a qualified person.
 
-The sketch uses ESP32 RX2/GPIO16 and TX2/GPIO17 as provisional UART pins and
-displays voltage, current, power, energy, and power factor on rotating pages.
-Verify actual pins and safe electrical interface before connecting the meter.
-It reports read failures instead of substituting zero, and does not reset the
-meter's cumulative energy counter. Readings and hardware remain unvalidated.
+The sketch uses RX2/GPIO16 and TX2/GPIO17 as provisional UART pins. Verify the
+actual pins and electrical interface with the reviewer. The 16×2 LCD cycles
+every four seconds through V/I, P/S, estimated |Q|/phase status, PF/angle, energy/relay
+command, and the dashboard IP. Serial logs a sample every two seconds. A
+failed read clears the live values. The sketch preserves the meter's
+cumulative energy counter.
 
-## Local Wi-Fi test page
+P and PF come from the meter. S is V × I. The firmware uses √(S² − P²) for
+estimated |Q| and acos(PF) in degrees for the equivalent angle. With distorted
+waveforms, the |Q| estimate includes nonactive effects beyond reactive power
+and the angle can differ from the displacement angle. The PZEM's unsigned PF
+cannot distinguish leading from lagging. The default display reports
+“No lead/lag data”. For a known load with approximately sinusoidal waveforms,
+`ASSUMED_LOAD_PHASE` can be set to `LoadPhase::Inductive` or
+`LoadPhase::Capacitive` to label the assumed direction. PF, |Q|, and phase are unavailable
+below the 100 A variant's nominal starting values (0.020 A or 0.4 W).
+
+## Local relay test
+
+Before using relay control, have a qualified reviewer verify the actual
+relay supply, 3.3 V logic compatibility at IN, and hardware default-off
+behavior during reset or loss of ESP32
+power. This prototype's reported relay is a Songle SRD-05VDC-SL-C module
+with active-low IN on D5/GPIO5. The 5 V marking specifies the coil voltage.
+Confirm the specific module's input levels separately. GPIO5 is a strapping
+pin, so check the module's effect on D5 and the relay state during power-up
+and reset, before firmware configures the pin.
+
+`RELAY_PIN` defaults to 5 and `RELAY_ACTIVE_LOW` defaults to true.
+`RELAY_BUTTON_PIN` is unset on the buttonless prototype. The optional button
+mode uses `ENABLE_LOCAL_RELAY_TEST` with a configured momentary input.
+
+In the enabled build, the output starts with an OFF request. Release the
+button after boot before pressing it. A press can request ON only with a fresh
+meter reading. A second press requests OFF. The relay task requests OFF when
+the meter fails or the 30-second test window expires. Check these behaviors
+with the qualified reviewer on a low-voltage bench before connecting a load.
+The software timeout is a test aid. Hardware protection and a safe default
+state must work independently of the ESP32. LCD and web status report the
+GPIO request. Verification of the relay contacts requires separate feedback.
+
+### Serial bench test without a button
+
+First confirm the label on the power header. `VN` is GPIO39, an analog input.
+`VIN` is a power rail on the development board. Verify its voltage and
+available current with the actual board and power source, and verify the
+relay module's IN levels and default-off behavior with the reviewer.
+
+For an isolated low-voltage bench with the ESP32 and relay module only,
+disconnect the AC supply, load, and mains-connected assembly. Build with
+`ENABLE_RELAY_SERIAL_BENCH_TEST = true` and keep
+`ENABLE_LOCAL_RELAY_TEST = false`. Open Serial Monitor at 115200 baud,
+choose a line ending, and send `RELAY TEST`. The firmware requests ON for
+one second, then OFF. Repeated commands during the pulse are ignored.
+Wi-Fi, the dashboard, and PZEM polling are skipped in this build. Restore
+the default build after the bench check and before returning to meter tests.
+
+## Local Wi-Fi dashboard and relay control
 
 Copy `esp32_lcd_test/wifi_secrets.example.h` to `wifi_secrets.h` in the same
 folder and enter the 2.4 GHz Wi-Fi name and password there. The file is ignored
-by Git; never commit or share it. Upload the sketch and open Serial Monitor at
-115200 baud to find the local `http://` address. Open that address on a device
-on the same network. The page shows current readings and meter failures. This
-is a local, unauthenticated HTTP test page: use a trusted private network, do
-not port-forward it, and do not use it for production or sensitive data. It is
-not connected to the deployed dashboard, Supabase, or the IoT worker.
+by Git; never commit or share it. Find the local IP on the LCD's
+`Dashboard IP` page. Open `http://` followed by that IP on a device on the
+same network. The page shows current readings, estimates, meter failures,
+and the last GPIO command state.
+
+To enable web control, use `openssl rand -hex 16` to generate a separate
+32-character token and put it in `RELAY_CONTROL_TOKEN` in the local
+`wifi_secrets.h`. Keep both button and serial bench modes disabled. Enter
+the token in the dashboard to use the ON and OFF buttons. The firmware
+requests OFF at boot. ON is accepted only with a fresh PZEM reading.
+The PZEM must be able to report valid measurements with the outlet OFF
+for this configuration to accept ON. While ON, a meter failure, Wi-Fi
+disconnect, or 30-second limit triggers an OFF request. Repeating ON does
+not extend the active timer.
+
+The dashboard displays the requested relay state and the sampled GPIO level.
+With the active-low module, OFF should read HIGH at D5. The GPIO reading
+does not verify the relay contacts or outlet state.
+
+The local dashboard uses unencrypted HTTP. Keep it on a trusted private
+network, avoid shared networks, and keep the port closed to the internet.
+The ESP32 dashboard is separate from the deployed Render app.
+
+## RUAN AI live readings pilot
+
+1. Run the web app in connected mode (`NEXT_PUBLIC_DEMO_MODE=false`) and
+   sign in as a home owner. In **Add device → ESP32 smart plug**, register
+   the plug in a room and copy its Device ID from the device page.
+2. In EMQX Cloud, use the Device ID as this plug's MQTT username. Create a
+   unique password and allow it to publish only to
+   `v1/devices/<device-id>/telemetry` and
+   `v1/devices/<device-id>/availability`. Use a separate worker identity.
+   Apply deny-by-default authorization after the allowed rules.
+3. In the ignored `wifi_secrets.h`, add `RUAN_DEVICE_ID`,
+   `RUAN_MQTT_URL` (the `mqtts://` broker URL), `RUAN_MQTT_PASSWORD`,
+   and `RUAN_MQTT_CA` (broker CA PEM, with escaped newlines). Use the
+   current Wi-Fi settings. The firmware uses NTP for TLS and sample
+   timestamps. Keep database and Supabase keys on the server.
+4. Set up the IoT worker with the database and Supabase settings from
+   `apps/iot-worker/.env.example`, and separate MQTT credentials. It can
+   run on a computer for the pilot with `TELEMETRY_ONLY=true`. Give this
+   identity subscribe access to telemetry and availability only. Set
+   `MQTT_CA_PEM` if its broker uses a
+   CA outside the Node.js trust store.
+5. Compile and upload the sketch with the ESP32 separated from the mains
+   assembly. After reconnecting the reviewed setup, check that the RUAN
+   AI device page shows a recent reading and that V, A, W, kWh and PF match
+   the LCD. Check that readings resume after reboot and Wi-Fi interruption.
+   A meter read fault stays distinct from a valid zero-watt reading.
+
+The pilot firmware sends readings and availability over MQTT. The web API
+blocks relay and schedule commands for devices registered this way until
+relay operation can be checked with the actual hardware.

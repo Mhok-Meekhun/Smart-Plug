@@ -6,9 +6,11 @@ const schema = z.object({
   MQTT_URL: z.string().regex(/^mqtts?:\/\//),
   MQTT_USERNAME: z.string().min(1),
   MQTT_PASSWORD: z.string().min(1),
+  MQTT_CA_PEM: z.string().min(1).optional(),
   MQTT_CLIENT_ID: z.string().min(3).max(120),
   SUPABASE_URL: z.string().url(),
   SUPABASE_SECRET_KEY: z.string().min(20),
+  TELEMETRY_ONLY: z.enum(["true", "false"]).default("false").transform(value => value === "true"),
   OUTBOX_POLL_MS: z.coerce.number().int().min(200).max(10_000).default(500)
 }).superRefine((value,context)=>{
   if(value.NODE_ENV==="production"&&!value.MQTT_URL.startsWith("mqtts://")){
